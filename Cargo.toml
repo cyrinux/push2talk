@@ -17,6 +17,7 @@ repository = "https://github.com/cyrinux/push2talk"
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 env_logger = "0.10.0"
+itertools = "0.11.0"
 log = "0.4.20"
 pulsectl-rs = { git = "https://github.com/cyrinux/pulsectl-rs", branch="main"}
 rdev = { git = "https://github.com/cyrinux/rdev", branch="main", default-features = false, features = ["evdev-rs", "unstable_grab"] }
