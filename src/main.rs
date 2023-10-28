@@ -82,7 +82,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start the application
     info!("Push2talk started.");
-    Ok(main_loop(callback, &sig_pause))
+    main_loop(callback, &sig_pause);
+    Ok(())
 }
 
 fn setup_logging() {
@@ -100,13 +101,14 @@ fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
 }
 
 fn validate_keybind(keybind: &[Key]) -> Result<(), Box<dyn Error>> {
-    Ok(if keybind.is_empty() || keybind.len() > 2 {
+    if keybind.is_empty() || keybind.len() > 2 {
         return Err(format!(
             "Expected 1 or 2 keys for PUSH2TALK_KEYBIND, got {}",
             keybind.len()
         )
         .into());
-    })
+    };
+    Ok(())
 }
 
 fn register_signal(sig_pause: &Arc<AtomicBool>) {
@@ -164,14 +166,15 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
         None => sources,
     };
 
-    Ok(devices_to_set.iter().for_each(|d| {
+    devices_to_set.iter().for_each(|d| {
         let dev = d.clone();
         handler
             .set_default_device(&dev.name.unwrap())
             .expect("Unable to set default device");
 
         handler.set_device_mute_by_index(dev.index, mute);
-    }))
+    });
+    Ok(())
 }
 
 #[cfg(test)]
