@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Parse command line arguments
     let args = Args::parse();
-    let source = Arc::new(args.source);
+    let source = args.source;
 
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize mute state
     let last_mute = Cell::new(true);
-    set_sources(true, Arc::clone(&source))?;
+    set_sources(true, &source.clone())?;
 
     // Initialize key states
     let first_key = keybind_parsed[0];
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if should_mute != last_mute.get() {
             info!("Toggle mute: {}", should_mute);
             last_mute.set(should_mute);
-            set_sources(should_mute, Arc::clone(&source)).ok();
+            set_sources(should_mute, &source).ok();
         }
 
         Some(event)
@@ -140,13 +140,13 @@ fn main_loop(
     }
 }
 
-fn set_sources(mute: bool, source: Arc<Option<String>>) -> Result<(), Box<dyn Error>> {
+fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>> {
     let mut handler = SourceController::create().expect("Can't create pulseaudio handler");
     let sources = handler
         .list_devices()
         .expect("Could not get list of soures devices.");
 
-    let devices_to_set = match source.as_deref() {
+    let devices_to_set = match source {
         Some(src) => {
             let filtered: Vec<_> = sources
                 .iter()
