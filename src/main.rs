@@ -1,4 +1,5 @@
 use clap::Parser;
+use clap_verbosity_flag::Verbosity;
 use itertools::Itertools;
 use log::{debug, info};
 use pulsectl::controllers::types::DeviceInfo;
@@ -22,14 +23,17 @@ use std::{
 struct Args {
     #[arg(short, long)]
     source: Option<String>,
+    #[command(flatten)]
+    verbose: Verbosity,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize logging
-    setup_logging();
-
     // Parse command line arguments
     let args = Args::parse();
+
+    // Initialize logging
+    setup_logging(args.verbose);
+
     let source = args.source;
 
     // Parse and validate keybinding environment variable
@@ -87,10 +91,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn setup_logging() {
-    env_logger::init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
-    );
+fn setup_logging(verbose: Verbosity) {
+    env_logger::Builder::new()
+        .filter_level(verbose.log_level_filter())
+        .init();
 }
 
 fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
@@ -130,16 +134,13 @@ fn main_loop(
         }
 
         if !is_running {
+            debug!("Currently in pause, send SIGUSR1 signal to resume");
             thread::sleep(time::Duration::from_secs(1));
             continue;
         }
 
-        match grab(callback.clone()) {
-            Ok(_) => break,
-            Err(error) => {
-                debug!("Error: {:?}", error);
-                thread::sleep(time::Duration::from_secs(1));
-            }
+        if grab(callback.clone()).is_err() {
+            thread::sleep(time::Duration::from_secs(1));
         }
     }
 }
