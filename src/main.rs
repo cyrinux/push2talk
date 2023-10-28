@@ -15,9 +15,16 @@ use std::{
     thread, time,
 };
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {}
+
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     setup_logging();
+
+    // Initialize cli
+    let _ = Cli::parse();
 
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
