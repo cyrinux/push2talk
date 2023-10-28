@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use log::info;
+use log::{debug, info};
 use pulsectl::controllers::types::DeviceInfo;
 use pulsectl::controllers::{DeviceControl, SourceController};
 use rdev::{grab, Event, EventType, Key};
@@ -25,6 +25,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Parse source environment variable
     let source = parse_source();
+
+    debug!("Settings: source: {source:?}, keybind: {keybind_parsed:?}");
 
     // Initialize mute state
     let last_mute = Cell::new(true);
