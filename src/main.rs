@@ -1,3 +1,6 @@
+use clap::Parser;
+use directories_next::BaseDirs;
+use fs2::FileExt;
 use itertools::Itertools;
 use log::{debug, info};
 use pulsectl::controllers::types::DeviceInfo;
@@ -5,6 +8,8 @@ use pulsectl::controllers::{DeviceControl, SourceController};
 use rdev::{grab, Event, EventType, Key};
 use signal_hook::flag;
 use std::error::Error;
+use std::fs::OpenOptions;
+use std::path::PathBuf;
 use std::{
     cell::Cell,
     env,
@@ -20,6 +25,12 @@ use std::{
 struct Cli {}
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Ensure that only one instance run
+    let lock_file = take_lock()?;
+    if lock_file.try_lock_exclusive().is_err() {
+        return Err("Another instance is already running.".into());
+    }
+
     // Initialize logging
     setup_logging();
 
@@ -84,6 +95,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     main_loop(callback, &sig_pause);
 
     Ok(())
+}
+
+fn take_lock() -> Result<std::fs::File, Box<dyn Error>> {
+    let base_dirs = BaseDirs::new().ok_or("Cannot find base directories")?;
+    let mut lock_path = PathBuf::from(
+        base_dirs
+            .runtime_dir()
+            .ok_or("Cannot find XDG runtime directory")?,
+    );
+    lock_path.push("push2talk.lock");
+    let lock_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(lock_path)?;
+    Ok(lock_file)
 }
 
 fn setup_logging() {

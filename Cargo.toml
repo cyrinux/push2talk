@@ -18,6 +18,7 @@ repository = "https://github.com/cyrinux/push2talk"
 clap = { version = "4.4.7", features = ["derive"] }
 directories-next = "2.0.0"
 env_logger = "0.10.0"
+fs2 = "0.4.3"
 itertools = "0.11.0"
 log = "0.4.20"
 pulsectl-rs = { git = "https://github.com/cyrinux/pulsectl-rs", branch="main"}
