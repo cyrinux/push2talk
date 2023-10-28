@@ -83,6 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Start the application
     info!("Push2talk started.");
     main_loop(callback, &sig_pause);
+
     Ok(())
 }
 
@@ -108,6 +109,7 @@ fn validate_keybind(keybind: &[Key]) -> Result<(), Box<dyn Error>> {
         )
         .into());
     };
+
     Ok(())
 }
 
@@ -143,27 +145,24 @@ fn main_loop(
 }
 
 fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>> {
-    let mut handler = SourceController::create().expect("Can't create pulseaudio handler");
-    let sources = handler
-        .list_devices()
-        .expect("Could not get list of soures devices.");
+    let mut handler = SourceController::create()?;
+    let sources = handler.list_devices()?;
 
-    let devices_to_set = match source {
-        Some(src) => {
-            let filtered: Vec<_> = sources
-                .iter()
-                .filter(|dev| {
-                    dev.description
-                        .as_ref()
-                        .map(|desc| desc.contains(src))
-                        .unwrap_or(false)
-                })
-                .cloned()
-                .collect::<Vec<DeviceInfo>>();
+    let devices_to_set = if let Some(src) = source {
+        let filtered_devices = sources
+            .iter()
+            .filter(|dev| {
+                dev.description
+                    .as_ref()
+                    .map(|desc| desc.contains(src))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect::<Vec<DeviceInfo>>();
 
-            vec![filtered.into_iter().exactly_one()?]
-        }
-        None => sources,
+        vec![filtered_devices.into_iter().exactly_one()?]
+    } else {
+        sources
     };
 
     devices_to_set.iter().for_each(|d| {
@@ -174,6 +173,7 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
 
         handler.set_device_mute_by_index(dev.index, mute);
     });
+
     Ok(())
 }
 
