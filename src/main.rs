@@ -1,7 +1,5 @@
-use clap::Parser;
-use clap_verbosity_flag::Verbosity;
 use itertools::Itertools;
-use log::{debug, info};
+use log::info;
 use pulsectl::controllers::types::DeviceInfo;
 use pulsectl::controllers::{DeviceControl, SourceController};
 use rdev::{grab, Event, EventType, Key};
@@ -17,32 +15,20 @@ use std::{
     thread, time,
 };
 
-// Command line argument parsing
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(short, long)]
-    source: Option<String>,
-    #[command(flatten)]
-    verbose: Verbosity,
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
-    // Parse command line arguments
-    let args = Args::parse();
-
     // Initialize logging
-    setup_logging(args.verbose);
-
-    let source = args.source;
+    setup_logging();
 
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
     validate_keybind(&keybind_parsed)?;
 
+    // Parse source environment variable
+    let source = parse_source();
+
     // Initialize mute state
     let last_mute = Cell::new(true);
-    set_sources(true, &source.clone())?;
+    set_sources(true, &source)?;
 
     // Initialize key states
     let first_key = keybind_parsed[0];
@@ -52,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Register UNIX signals for pause
     let sig_pause = Arc::new(AtomicBool::new(false));
-    register_signal(&sig_pause);
+    register_signal(&sig_pause)?;
 
     // Define the callback for key events
     let callback = move |event: Event| -> Option<Event> {
@@ -85,16 +71,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     thread::sleep(time::Duration::from_secs(1));
 
     // Start the application
-    info!("Push2talk started.");
+    info!("Push2talk started");
     main_loop(callback, &sig_pause);
 
     Ok(())
 }
 
-fn setup_logging(verbose: Verbosity) {
-    env_logger::Builder::new()
-        .filter_level(verbose.log_level_filter())
-        .init();
+fn setup_logging() {
+    env_logger::init_from_env(
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+    );
 }
 
 fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
@@ -105,21 +91,22 @@ fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
         .collect()
 }
 
-fn validate_keybind(keybind: &[Key]) -> Result<(), Box<dyn Error>> {
-    if keybind.is_empty() || keybind.len() > 2 {
-        return Err(format!(
-            "Expected 1 or 2 keys for PUSH2TALK_KEYBIND, got {}",
-            keybind.len()
-        )
-        .into());
-    };
-
-    Ok(())
+fn parse_source() -> Option<String> {
+    env::var_os("PUSH2TALK_SOURCE").map(|v| v.into_string().unwrap_or_default())
 }
 
-fn register_signal(sig_pause: &Arc<AtomicBool>) {
-    flag::register(signal_hook::consts::SIGUSR1, Arc::clone(sig_pause))
-        .expect("Unable to register SIGUSR1 signal");
+fn validate_keybind(keybind: &[Key]) -> Result<(), Box<dyn Error>> {
+    match keybind.len() {
+        1 | 2 => Ok(()),
+        n => Err(format!("Expected 1 or 2 keys for PUSH2TALK_KEYBIND, got {}", n).into()),
+    }
+}
+
+fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+    let _ = flag::register(signal_hook::consts::SIGUSR1, Arc::clone(sig_pause))
+        .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"));
+
+    Ok(())
 }
 
 fn main_loop(
@@ -131,10 +118,10 @@ fn main_loop(
     loop {
         if sig_pause.swap(false, Ordering::Relaxed) {
             is_running = !is_running;
+            info!("Receive SIGUSR1 signal, is running: {is_running}");
         }
 
         if !is_running {
-            debug!("Currently in pause, send SIGUSR1 signal to resume");
             thread::sleep(time::Duration::from_secs(1));
             continue;
         }
@@ -168,9 +155,9 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
 
     devices_to_set.iter().for_each(|d| {
         let dev = d.clone();
-        handler
+        let _ = handler
             .set_default_device(&dev.name.unwrap())
-            .expect("Unable to set default device");
+            .map_err(|e| format!("Unable to set default device: {e}"));
 
         handler.set_device_mute_by_index(dev.index, mute);
     });
