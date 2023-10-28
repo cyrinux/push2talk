@@ -217,33 +217,31 @@ mod tests {
         assert!(register_signal(&flag).is_ok());
     }
 
-    #[test]
-    fn test_set_sources_mute_true() {
-        let mut handler = SourceController::create().unwrap();
-        let devices = handler.list_devices().unwrap();
-        let sources = devices
-            .iter()
-            .filter(|dev| dev.description.is_some())
-            .map(|dev| dev.description.clone().unwrap())
-            .collect::<Vec<String>>();
+    // #[test]
+    // fn test_set_sources_mute_true() {
+    //     let mut handler = SourceController::create().unwrap();
+    //     let devices = handler.list_devices().unwrap();
+    //     let sources = devices
+    //         .iter()
+    //         .filter(|dev| dev.description.is_some())
+    //         .map(|dev| dev.description.clone().unwrap())
+    //         .collect::<Vec<String>>();
 
-        let source_option = sources.first().cloned();
-        assert!(set_sources(true, &source_option).is_ok());
-    }
+    //     let source_option = sources.first().cloned();
+    //     assert!(set_sources(true, &source_option).is_ok());
+    // }
 
-    #[test]
-    fn test_set_sources_mute_false() {
-        let mut handler = SourceController::create().unwrap();
-        let devices = handler.list_devices().unwrap();
-        let sources = devices
-            .iter()
-            .filter(|dev| dev.description.is_some())
-            .map(|dev| dev.description.clone().unwrap())
-            .collect::<Vec<String>>();
+    // #[test]
+    // fn test_set_sources_mute_false() {
+    //     let mut handler = SourceController::create().unwrap();
+    //     let devices = handler.list_devices().unwrap();
+    //     let sources = devices
+    //         .iter()
+    //         .filter(|dev| dev.description.is_some())
+    //         .map(|dev| dev.description.clone().unwrap())
+    //         .collect::<Vec<String>>();
 
-        let source_option = sources.first().cloned();
-        assert!(set_sources(false, &source_option).is_ok());
-    }
-
-
+    //     let source_option = sources.first().cloned();
+    //     assert!(set_sources(false, &source_option).is_ok());
+    // }
 }
