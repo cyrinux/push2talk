@@ -198,4 +198,52 @@ mod tests {
     fn test_validate_keybind_two_keys() {
         assert!(validate_keybind(&[Key::ShiftLeft, Key::ShiftRight]).is_ok());
     }
+
+    #[test]
+    fn test_parse_source_valid() {
+        std::env::set_var("PUSH2TALK_SOURCE", "SourceName");
+        assert_eq!(parse_source(), Some("SourceName".to_string()));
+    }
+
+    #[test]
+    fn test_parse_source_empty() {
+        std::env::remove_var("PUSH2TALK_SOURCE");
+        assert_eq!(parse_source(), None);
+    }
+
+    #[test]
+    fn test_register_signal_success() {
+        let flag = Arc::new(AtomicBool::new(false));
+        assert!(register_signal(&flag).is_ok());
+    }
+
+    #[test]
+    fn test_set_sources_mute_true() {
+        let mut handler = SourceController::create().unwrap();
+        let devices = handler.list_devices().unwrap();
+        let sources = devices
+            .iter()
+            .filter(|dev| dev.description.is_some())
+            .map(|dev| dev.description.clone().unwrap())
+            .collect::<Vec<String>>();
+
+        let source_option = sources.first().cloned();
+        assert!(set_sources(true, &source_option).is_ok());
+    }
+
+    #[test]
+    fn test_set_sources_mute_false() {
+        let mut handler = SourceController::create().unwrap();
+        let devices = handler.list_devices().unwrap();
+        let sources = devices
+            .iter()
+            .filter(|dev| dev.description.is_some())
+            .map(|dev| dev.description.clone().unwrap())
+            .collect::<Vec<String>>();
+
+        let source_option = sources.first().cloned();
+        assert!(set_sources(false, &source_option).is_ok());
+    }
+
+
 }
