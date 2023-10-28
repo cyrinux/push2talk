@@ -89,7 +89,7 @@ fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
     env::var("PUSH2TALK_KEYBIND")
         .unwrap_or("ControlLeft,Space".to_string())
         .split(',')
-        .map(|x| x.parse().map_err(|_| format!("Unknown key: {}", x).into()))
+        .map(|x| x.parse().map_err(|_| format!("Unknown key: {x}").into()))
         .collect()
 }
 
@@ -100,13 +100,13 @@ fn parse_source() -> Option<String> {
 fn validate_keybind(keybind: &[Key]) -> Result<(), Box<dyn Error>> {
     match keybind.len() {
         1 | 2 => Ok(()),
-        n => Err(format!("Expected 1 or 2 keys for PUSH2TALK_KEYBIND, got {}", n).into()),
+        n => Err(format!("Expected 1 or 2 keys for PUSH2TALK_KEYBIND, got {n}").into()),
     }
 }
 
 fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    let _ = flag::register(signal_hook::consts::SIGUSR1, Arc::clone(sig_pause))
-        .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"));
+    flag::register(signal_hook::consts::SIGUSR1, Arc::clone(sig_pause))
+        .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"))?;
 
     Ok(())
 }
@@ -150,19 +150,20 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
             .cloned()
             .collect::<Vec<DeviceInfo>>();
 
-        vec![filtered_devices.into_iter().exactly_one()?]
+        let source = filtered_devices.into_iter().exactly_one()?;
+
+        handler
+            .set_default_device(&source.name.clone().unwrap())
+            .map_err(|e| format!("Unable to set default device: {e}"))?;
+
+        vec![source]
     } else {
         sources
     };
 
-    devices_to_set.iter().for_each(|d| {
-        let dev = d.clone();
-        let _ = handler
-            .set_default_device(&dev.name.unwrap())
-            .map_err(|e| format!("Unable to set default device: {e}"));
-
-        handler.set_device_mute_by_index(dev.index, mute);
-    });
+    devices_to_set
+        .iter()
+        .for_each(|d| handler.set_device_mute_by_index(d.clone().index, mute));
 
     Ok(())
 }
