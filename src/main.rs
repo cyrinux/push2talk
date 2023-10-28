@@ -89,7 +89,7 @@ fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
     env::var("PUSH2TALK_KEYBIND")
         .unwrap_or("ControlLeft,Space".to_string())
         .split(',')
-        .map(|x| x.parse().map_err(|_| format!("Unknown key: {x}").into()))
+        .map(|k| k.parse().map_err(|_| format!("Unknown key: {k}").into()))
         .collect()
 }
 
