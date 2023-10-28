@@ -139,7 +139,7 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
     let sources = handler.list_devices()?;
 
     let devices_to_set = if let Some(src) = source {
-        let filtered_devices = sources
+        let source = sources
             .iter()
             .filter(|dev| {
                 dev.description
@@ -148,9 +148,9 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
                     .unwrap_or(false)
             })
             .cloned()
-            .collect::<Vec<DeviceInfo>>();
-
-        let source = filtered_devices.into_iter().exactly_one()?;
+            .collect::<Vec<DeviceInfo>>()
+            .into_iter()
+            .exactly_one()?;
 
         handler
             .set_default_device(&source.name.clone().unwrap())
