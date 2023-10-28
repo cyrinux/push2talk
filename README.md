@@ -1,9 +1,6 @@
-![](https://img.shields.io/crates/d/push2talk)
 ![](https://img.shields.io/github/issues-raw/cyrinux/push2talk)
 ![](https://img.shields.io/github/stars/cyrinux/push2talk)
 ![](https://img.shields.io/aur/version/push2talk-git)
-![](https://img.shields.io/crates/v/push2talk)
-[![codecov](https://codecov.io/gh/cyrinux/push2talk/branch/main/graph/badge.svg?token=NYY5DRMLM4)](https://codecov.io/gh/cyrinux/push2talk)
 
 ![a push to talk logo created by dall-e](./pictures/logo-small.png)
 
@@ -33,7 +30,14 @@ sudo usermod -a -G input $USER
 ## 🎤 Usage
 
 - To set keybind compose of one or two keys, use env var, eg: `env PUSH2TALK_KEYBIND="ControlLeft,KeyO" push2talk` or `env PUSH2TALK_KEYBIND="MetaRight" push2talk`.
-
-- To get more log: `RUST_LOG=debug push2talk`.
+- To get more log: `env RUST_LOG=debug push2talk`.
 - To specify an unique source to manage, use the env var, eg: `env PUSH2TALK_SOURCE="OpenComm by Shokz" push2talk`.
-- There is also a systemd unit provided. `systemctl --user start push2talk.service`
+- There is also a systemd unit provided. `systemctl --user start push2talk.service`.
+
+## 👥 Contributing
+
+We welcome contributions!
+
+## 💑 Thanks
+
+Made with love by @cyrinux and @maximbaz.
