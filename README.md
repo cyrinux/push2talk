@@ -30,9 +30,10 @@ sudo usermod -a -G input $USER
 ## 🎤 Usage
 
 - To set keybind compose of one or two keys, use env var, eg: `env PUSH2TALK_KEYBIND="ControlLeft,KeyO" push2talk` or `env PUSH2TALK_KEYBIND="MetaRight" push2talk`.
-- To get more log: `env RUST_LOG=debug push2talk`.
+
+- To get more log: `RUST_LOG=debug push2talk`.
 - To specify an unique source to manage, use the env var, eg: `env PUSH2TALK_SOURCE="OpenComm by Shokz" push2talk`.
-- There is also a systemd unit provided. `systemctl --user start push2talk.service`.
+- There is also a systemd unit provided. `systemctl --user start push2talk.service`
 
 ## 👥 Contributing
 
