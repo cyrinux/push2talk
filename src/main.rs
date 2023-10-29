@@ -159,19 +159,26 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         libinput_context.dispatch().unwrap();
         for event in libinput_context.by_ref() {
-            match event {
-                input::Event::Keyboard(key_event) => {
-                    let keysym = get_keysym(&key_event, &xkb_state);
-                    let pressed = check_pressed(&key_event);
-                    let should_mute = check_keybind(keysym, pressed);
-                    if should_mute != last_mute.get() {
-                        info!("Toggle mute: {}", should_mute);
-                        last_mute.set(should_mute);
-                        set_sources(should_mute, &source).ok();
-                    }
-                }
-                _ => {}
-            }
+            handle_event(event, &xkb_state, &check_keybind, &last_mute, &source);
+        }
+    }
+}
+
+fn handle_event(
+    event: input::Event,
+    xkb_state: &xkb::State,
+    check_keybind: &dyn Fn(Keysym, bool) -> bool,
+    last_mute: &Cell<bool>,
+    source: &Option<String>,
+) {
+    if let input::Event::Keyboard(key_event) = event {
+        let keysym = get_keysym(&key_event, xkb_state);
+        let pressed = check_pressed(&key_event);
+        let should_mute = check_keybind(keysym, pressed);
+        if should_mute != last_mute.get() {
+            info!("Toggle mute: {}", should_mute);
+            last_mute.set(should_mute);
+            set_sources(should_mute, source).ok();
         }
     }
 }
