@@ -10,6 +10,7 @@ use signal_hook::flag;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
+use std::process::Command;
 use std::{
     cell::Cell,
     env,
@@ -23,9 +24,12 @@ use std::{
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[arg(short, long)]
     /// List sources devices
+    #[arg(short, long)]
     list_devices: bool,
+    /// Toggle pause
+    #[arg(short, long)]
+    toggle_pause: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -35,6 +39,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // List available sources
     if cli.list_devices {
         list_devices()?;
+        return Ok(());
+    }
+
+    // Send pause signal
+    if cli.toggle_pause {
+        Command::new("killall")
+            .args(["-SIGUSR1", "push2talk"])
+            .spawn()
+            .expect("Can't pause push2talk");
+        println!("Toggle pause.");
         return Ok(());
     }
 
