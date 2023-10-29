@@ -28,7 +28,19 @@ use std::{
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// List sources devices
+    #[arg(short, long)]
+    list_devices: bool,
+    /// Toggle pause
+    #[arg(short, long)]
+    toggle_pause: bool,
+}
+
 struct Push2TalkLibinput;
+
 impl LibinputInterface for Push2TalkLibinput {
     fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
         OpenOptions::new()
@@ -42,17 +54,6 @@ impl LibinputInterface for Push2TalkLibinput {
     fn close_restricted(&mut self, fd: OwnedFd) {
         let _ = File::from(fd);
     }
-}
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    /// List sources devices
-    #[arg(short, long)]
-    list_devices: bool,
-    /// Toggle pause
-    #[arg(short, long)]
-    toggle_pause: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -69,8 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if cli.toggle_pause {
         Command::new("killall")
             .args(["-SIGUSR1", "push2talk"])
-            .spawn()
-            .expect("Can't pause push2talk");
+            .spawn()?;
 
         println!("Toggle pause.");
 
@@ -95,11 +95,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Create context
     let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
 
-    // Load keymap informations
-    let keymap =
-        xkb::Keymap::new_from_names(&xkb_context, "", "", "", "", None, xkb::COMPILE_NO_FLAGS)
-            .unwrap();
-
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
     validate_keybind(&keybind_parsed)?;
@@ -123,11 +118,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sig_pause = Arc::new(AtomicBool::new(false));
     register_signal(&sig_pause)?;
 
-    // Create the state tracker
-    let xkb_state = xkb::State::new(&keymap);
-
     // Main event loop, toggles state based on signals and key events
     let mut is_running = true;
+
+    // Load keymap informations
+    let keymap =
+        xkb::Keymap::new_from_names(&xkb_context, "", "", "", "", None, xkb::COMPILE_NO_FLAGS)
+            .unwrap();
+
+    // Create the state tracker
+    let xkb_state = xkb::State::new(&keymap);
 
     // Check keybind closure
     let check_keybind = |key: Keysym, pressed: bool| -> bool {
