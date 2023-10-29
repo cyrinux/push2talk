@@ -41,4 +41,4 @@ We welcome contributions!
 
 ## 💑 Thanks
 
-Made with love by @cyrinux and @maximbaz.ush
+Made with love by @cyrinux and @maximbaz.

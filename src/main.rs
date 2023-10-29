@@ -301,3 +301,85 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_keybind_default() {
+        // Assuming default keybinds are Control_L and Space
+        let keybind = parse_keybind().unwrap();
+        assert_eq!(keybind.len(), 2);
+        // Assuming default keybinds are Control_L and Space
+        assert_eq!(
+            keybind[0],
+            xkb::keysym_from_name("Control_L", xkb::KEYSYM_CASE_INSENSITIVE)
+        );
+        assert_eq!(
+            keybind[1],
+            xkb::keysym_from_name("Space", xkb::KEYSYM_CASE_INSENSITIVE)
+        );
+    }
+
+    #[test]
+    fn test_parse_keybind_custom() {
+        std::env::set_var("PUSH2TALK_KEYBIND", "Shift_L,Alt_L");
+        let keybind = parse_keybind().unwrap();
+        assert_eq!(keybind.len(), 2);
+        assert_eq!(
+            keybind[0],
+            xkb::keysym_from_name("Shift_L", xkb::KEYSYM_CASE_INSENSITIVE)
+        );
+        assert_eq!(
+            keybind[1],
+            xkb::keysym_from_name("Alt_L", xkb::KEYSYM_CASE_INSENSITIVE)
+        );
+        std::env::remove_var("PUSH2TALK_KEYBIND");
+    }
+
+    #[test]
+    fn test_parse_keybind_invalid() {
+        std::env::set_var("PUSH2TALK_KEYBIND", "InvalidKey");
+        assert!(parse_keybind().is_err());
+        std::env::remove_var("PUSH2TALK_KEYBIND");
+    }
+
+    #[test]
+    fn test_validate_keybind_valid() {
+        let keybind = vec![
+            xkb::keysym_from_name("Control_L", xkb::KEYSYM_CASE_INSENSITIVE),
+            xkb::keysym_from_name("Space", xkb::KEYSYM_CASE_INSENSITIVE),
+        ];
+        assert!(validate_keybind(&keybind).is_ok());
+    }
+
+    #[test]
+    fn test_validate_keybind_invalid() {
+        let keybind = vec![
+            xkb::keysym_from_name("Control_L", xkb::KEYSYM_CASE_INSENSITIVE),
+            xkb::keysym_from_name("Space", xkb::KEYSYM_CASE_INSENSITIVE),
+            xkb::keysym_from_name("Shift_R", xkb::KEYSYM_CASE_INSENSITIVE),
+        ];
+        assert!(validate_keybind(&keybind).is_err());
+    }
+
+    #[test]
+    fn test_parse_source_valid() {
+        std::env::set_var("PUSH2TALK_SOURCE", "SourceName");
+        assert_eq!(parse_source(), Some("SourceName".to_string()));
+        std::env::remove_var("PUSH2TALK_SOURCE");
+    }
+
+    #[test]
+    fn test_parse_source_empty() {
+        std::env::remove_var("PUSH2TALK_SOURCE");
+        assert_eq!(parse_source(), None);
+    }
+
+    #[test]
+    fn test_register_signal_success() {
+        let flag = Arc::new(AtomicBool::new(false));
+        assert!(register_signal(&flag).is_ok());
+    }
+}
