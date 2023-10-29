@@ -1,6 +1,6 @@
 [package]
 name = "push2talk"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2021"
 authors = ["Cyril Levis", "Maxim Baz"]
 categories = ["gui", "audio"]
@@ -11,18 +11,17 @@ license = "ISC"
 homepage = "https://github.com/cyrinux/push2talk"
 repository = "https://github.com/cyrinux/push2talk"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 clap = { version = "4.4.7", features = ["derive"] }
 directories-next = "2.0.0"
 env_logger = "0.10.0"
 fs2 = "0.4.3"
+input = "0.8.3"
 itertools = "0.11.0"
+libc = "0.2.149"
 log = "0.4.20"
 pulsectl-rs = { git = "https://github.com/cyrinux/pulsectl-rs", branch="main"}
-rdev = { git = "https://github.com/cyrinux/rdev", branch="main", default-features = false, features = ["evdev-rs", "unstable_grab"] }
 signal-hook = "0.3.17"
 strum = "0.25.0"
 strum_macros = "0.25.3"
+xkbcommon = "0.7.0"
