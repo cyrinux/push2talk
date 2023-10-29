@@ -71,7 +71,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             .args(["-SIGUSR1", "push2talk"])
             .spawn()
             .expect("Can't pause push2talk");
+
         println!("Toggle pause.");
+
         return Ok(());
     }
 
@@ -181,7 +183,7 @@ fn handle_event(
         );
         let should_mute = check_keybind(keysym, pressed);
         if should_mute != last_mute.get() {
-            info!("Toggle mute: {}", should_mute);
+            info!("Toggle {}", if should_mute { "mute" } else { "unmute" });
             last_mute.set(should_mute);
             set_sources(should_mute, source).ok();
         }
