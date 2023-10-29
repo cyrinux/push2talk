@@ -5,7 +5,7 @@ use input::event::keyboard::KeyState::*;
 use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
-use libc::{O_RDONLY, O_RDWR, O_WRONLY};
+use libc::{O_RDWR, O_WRONLY};
 use log::{debug, info};
 use pulsectl::controllers::types::DeviceInfo;
 use pulsectl::controllers::{DeviceControl, SourceController};
@@ -33,7 +33,7 @@ impl LibinputInterface for Push2TalkLibinput {
     fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
         OpenOptions::new()
             .custom_flags(flags)
-            .read((flags & O_RDONLY != 0) | (flags & O_RDWR != 0))
+            .read(true)
             .write((flags & O_WRONLY != 0) | (flags & O_RDWR != 0))
             .open(path)
             .map(|file| file.into())
