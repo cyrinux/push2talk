@@ -90,22 +90,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
     libinput_context
         .udev_assign_seat("seat0")
-        .expect("Can't connect to libinput on seat0");
+        .map_err(|e| format!("Can't connect to libinput on seat0: {e:?}"))?;
 
     // Create context
     let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
 
     // Load keymap informations
-    let keymap = xkb::Keymap::new_from_names(
-        &xkb_context,
-        "",   // rules
-        "",   // model
-        "",   // layout
-        "",   // variant
-        None, // options
-        xkb::COMPILE_NO_FLAGS,
-    )
-    .expect("Can't init keymap");
+    let keymap =
+        xkb::Keymap::new_from_names(&xkb_context, "", "", "", "", None, xkb::COMPILE_NO_FLAGS)
+            .unwrap();
 
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
@@ -133,6 +126,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Create the state tracker
     let xkb_state = xkb::State::new(&keymap);
 
+    // Main event loop, toggles state based on signals and key events
+    let mut is_running = true;
+
     // Check keybind closure
     let check_keybind = |key: Keysym, pressed: bool| -> bool {
         match key {
@@ -143,15 +139,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         !first_key_pressed.get() || second_key.is_some() && !second_key_pressed.get()
     };
 
-    // Main event loop, toggles state based on signals and key events
-    let mut is_running = true;
-
     // Start the application
     info!("Push2talk started");
     loop {
         if sig_pause.swap(false, Ordering::Relaxed) {
             is_running = !is_running;
-            info!("Receive SIGUSR1 signal, is running: {is_running}");
+            info!(
+                "Receive SIGUSR1 signal, {}",
+                if is_running { "resuming" } else { "pausing" }
+            )
         }
 
         if !is_running {
@@ -159,7 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        libinput_context.dispatch().unwrap();
+        libinput_context.dispatch()?;
         for event in libinput_context.by_ref() {
             handle_event(event, &xkb_state, &check_keybind, &last_mute, &source);
         }
@@ -191,8 +187,8 @@ fn handle_event(
 }
 
 fn get_keysym(key_event: &input::event::KeyboardEvent, xkb_state: &xkb::State) -> Keysym {
-    let keycode = key_event.key() + 8;
     // libinput's keycodes are offset by 8 from XKB keycodes
+    let keycode = key_event.key() + 8;
     xkb_state.key_get_one_sym(keycode.into())
 }
 
@@ -246,7 +242,7 @@ fn parse_keybind() -> Result<Vec<Keysym>, Box<dyn Error>> {
         .iter()
         .any(|k| *k == xkb::keysym_from_name("KEY_NoSymbol", xkb::KEYSYM_CASE_INSENSITIVE))
     {
-        return Err("Unknown key".into());
+        return Err("Unable to parse keybind".into());
     }
 
     Ok(keybind)
@@ -311,6 +307,7 @@ mod tests {
     #[test]
     fn test_parse_keybind_default() {
         // Assuming default keybinds are Control_L and Space
+        std::env::remove_var("PUSH2TALK_KEYBIND");
         let keybind = parse_keybind().unwrap();
         assert_eq!(keybind.len(), 2);
         // Assuming default keybinds are Control_L and Space
@@ -325,30 +322,30 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_keybind_custom() {
-        std::env::set_var("PUSH2TALK_KEYBIND", "Shift_L,Alt_L");
+    fn test_parse_keybind_with_2_valid_keys() {
+        std::env::set_var("PUSH2TALK_KEYBIND", "Control_L,O");
         let keybind = parse_keybind().unwrap();
         assert_eq!(keybind.len(), 2);
         assert_eq!(
             keybind[0],
-            xkb::keysym_from_name("Shift_L", xkb::KEYSYM_CASE_INSENSITIVE)
+            xkb::keysym_from_name("Control_L", xkb::KEYSYM_CASE_INSENSITIVE)
         );
         assert_eq!(
             keybind[1],
-            xkb::keysym_from_name("Alt_L", xkb::KEYSYM_CASE_INSENSITIVE)
+            xkb::keysym_from_name("O", xkb::KEYSYM_CASE_INSENSITIVE)
         );
         std::env::remove_var("PUSH2TALK_KEYBIND");
     }
 
     #[test]
-    fn test_parse_keybind_invalid() {
+    fn test_parse_keybind_with_invalid_key() {
         std::env::set_var("PUSH2TALK_KEYBIND", "InvalidKey");
         assert!(parse_keybind().is_err());
         std::env::remove_var("PUSH2TALK_KEYBIND");
     }
 
     #[test]
-    fn test_validate_keybind_valid() {
+    fn test_validate_keybind_with_2_keys_is_valid() {
         let keybind = vec![
             xkb::keysym_from_name("Control_L", xkb::KEYSYM_CASE_INSENSITIVE),
             xkb::keysym_from_name("Space", xkb::KEYSYM_CASE_INSENSITIVE),
@@ -357,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_keybind_invalid() {
+    fn test_validate_keybind_with_3_keys_is_invalid() {
         let keybind = vec![
             xkb::keysym_from_name("Control_L", xkb::KEYSYM_CASE_INSENSITIVE),
             xkb::keysym_from_name("Space", xkb::KEYSYM_CASE_INSENSITIVE),
