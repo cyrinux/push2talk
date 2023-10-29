@@ -173,11 +173,11 @@ fn handle_event(
 ) {
     if let input::Event::Keyboard(key_event) = event {
         let keysym = get_keysym(&key_event, xkb_state);
-        let name = xkb::keysym_get_name(keysym);
         let pressed = check_pressed(&key_event);
         log::trace!(
-            "Key {}: {name}",
-            if pressed { "pressed" } else { "released" }
+            "Key {}: {}",
+            if pressed { "pressed" } else { "released" },
+            xkb::keysym_get_name(keysym)
         );
         let should_mute = check_keybind(keysym, pressed);
         if should_mute != last_mute.get() {
