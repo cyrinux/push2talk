@@ -22,11 +22,21 @@ use std::{
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Cli {}
+struct Cli {
+    #[arg(short, long)]
+    /// List sources devices
+    list_devices: bool,
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize cli
-    let _ = Cli::parse();
+    let cli = Cli::parse();
+
+    // List available sources
+    if cli.list_devices {
+        list_devices()?;
+        return Ok(());
+    }
 
     // Ensure that only one instance run
     let lock_file = take_lock()?;
@@ -94,6 +104,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     info!("Push2talk started");
     main_loop(callback, &sig_pause);
 
+    Ok(())
+}
+
+fn list_devices() -> Result<(), Box<dyn Error>> {
+    let mut handler = SourceController::create()?;
+    let sources = handler.list_devices()?;
+    println!("Source devices:");
+    sources.iter().for_each(|d| {
+        println!("\t* {}", d.description.as_ref().unwrap());
+    });
     Ok(())
 }
 
