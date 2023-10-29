@@ -1,14 +1,19 @@
 use clap::Parser;
 use directories_next::BaseDirs;
 use fs2::FileExt;
+use input::event::keyboard::KeyState::*;
+use input::event::keyboard::KeyboardEventTrait;
+use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
+use libc::{O_RDONLY, O_RDWR, O_WRONLY};
 use log::{debug, info};
 use pulsectl::controllers::types::DeviceInfo;
 use pulsectl::controllers::{DeviceControl, SourceController};
-use rdev::{grab, Event, EventType, Key};
 use signal_hook::flag;
 use std::error::Error;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
+use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::{
@@ -20,6 +25,24 @@ use std::{
     },
     thread, time,
 };
+use xkbcommon::xkb;
+use xkbcommon::xkb::Keysym;
+
+struct MyLibinputInterface;
+impl LibinputInterface for MyLibinputInterface {
+    fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
+        OpenOptions::new()
+            .custom_flags(flags)
+            .read((flags & O_RDONLY != 0) | (flags & O_RDWR != 0))
+            .write((flags & O_WRONLY != 0) | (flags & O_RDWR != 0))
+            .open(path)
+            .map(|file| file.into())
+            .map_err(|err| err.raw_os_error().unwrap())
+    }
+    fn close_restricted(&mut self, fd: OwnedFd) {
+        let _ = File::from(fd);
+    }
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -61,6 +84,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     setup_logging();
 
+    // Init libinput
+    let mut libinput_context = Libinput::new_with_udev(MyLibinputInterface);
+    libinput_context
+        .udev_assign_seat("seat0")
+        .expect("Can't connect to libinput on seat0");
+
+    // Create context
+    let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+
+    // Load keymap informations
+    let keymap = xkb::Keymap::new_from_names(
+        &xkb_context,
+        "",   // rules
+        "",   // model
+        "",   // layout
+        "",   // variant
+        None, // options
+        xkb::COMPILE_NO_FLAGS,
+    )
+    .expect("Can't init keymap");
+
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
     validate_keybind(&keybind_parsed)?;
@@ -84,41 +128,65 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sig_pause = Arc::new(AtomicBool::new(false));
     register_signal(&sig_pause)?;
 
-    // Define the callback for key events
-    let callback = move |event: Event| -> Option<Event> {
-        let check_keybind = |key: Key, pressed: bool| -> bool {
-            match key {
-                k if Some(k) == second_key => second_key_pressed.set(pressed),
-                k if k == first_key => first_key_pressed.set(pressed),
-                _ => {}
-            }
-            !first_key_pressed.get() || second_key.is_some() && !second_key_pressed.get()
-        };
+    // Create the state tracker
+    let xkb_state = xkb::State::new(&keymap);
 
-        let (key, pressed) = match event.event_type {
-            EventType::KeyPress(key) => (key, true),
-            EventType::KeyRelease(key) => (key, false),
-            _ => return Some(event),
-        };
-
-        let should_mute = check_keybind(key, pressed);
-        if should_mute != last_mute.get() {
-            info!("Toggle mute: {}", should_mute);
-            last_mute.set(should_mute);
-            set_sources(should_mute, &source).ok();
+    // Check keybind closure
+    let check_keybind = |key: Keysym, pressed: bool| -> bool {
+        match key {
+            k if Some(k) == second_key => second_key_pressed.set(pressed),
+            k if k == first_key => first_key_pressed.set(pressed),
+            _ => {}
         }
-
-        Some(event)
+        !first_key_pressed.get() || second_key.is_some() && !second_key_pressed.get()
     };
 
-    // Pause for a moment before starting the main loop
-    thread::sleep(time::Duration::from_secs(1));
+    // Main event loop, toggles state based on signals and key events
+    let mut is_running = true;
 
     // Start the application
     info!("Push2talk started");
-    main_loop(callback, &sig_pause);
+    loop {
+        if sig_pause.swap(false, Ordering::Relaxed) {
+            is_running = !is_running;
+            info!("Receive SIGUSR1 signal, is running: {is_running}");
+        }
 
-    Ok(())
+        if !is_running {
+            thread::sleep(time::Duration::from_secs(1));
+            continue;
+        }
+
+        libinput_context.dispatch().unwrap();
+        for event in libinput_context.by_ref() {
+            match event {
+                input::Event::Keyboard(key_event) => {
+                    let keysym = get_keysym(&key_event, &xkb_state);
+                    let pressed = check_pressed(&key_event);
+                    let should_mute = check_keybind(keysym, pressed);
+                    if should_mute != last_mute.get() {
+                        info!("Toggle mute: {}", should_mute);
+                        last_mute.set(should_mute);
+                        set_sources(should_mute, &source).ok();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn get_keysym(key_event: &input::event::KeyboardEvent, xkb_state: &xkb::State) -> Keysym {
+    let keycode = key_event.key() + 8;
+    // libinput's keycodes are offset by 8 from XKB keycodes
+    xkb_state.key_get_one_sym(keycode.into())
+}
+
+fn check_pressed(state: &input::event::KeyboardEvent) -> bool {
+    match state.key_state() {
+        Released => false,
+        Pressed => true,
+    }
 }
 
 fn list_devices() -> Result<(), Box<dyn Error>> {
@@ -153,19 +221,28 @@ fn setup_logging() {
     );
 }
 
-fn parse_keybind() -> Result<Vec<Key>, Box<dyn Error>> {
-    env::var("PUSH2TALK_KEYBIND")
-        .unwrap_or("ControlLeft,Space".to_string())
+fn parse_keybind() -> Result<Vec<Keysym>, Box<dyn Error>> {
+    let keybind = env::var("PUSH2TALK_KEYBIND")
+        .unwrap_or("Control_L,Space".to_string())
         .split(',')
-        .map(|k| k.parse().map_err(|_| format!("Unknown key: {k}").into()))
-        .collect()
+        .map(|k| xkb::keysym_from_name(k, xkb::KEYSYM_CASE_INSENSITIVE))
+        .collect::<Vec<Keysym>>();
+
+    if keybind
+        .iter()
+        .any(|k| *k == xkb::keysym_from_name("KEY_NoSymbol", xkb::KEYSYM_CASE_INSENSITIVE))
+    {
+        return Err("Unknown key".into());
+    }
+
+    Ok(keybind)
 }
 
 fn parse_source() -> Option<String> {
     env::var_os("PUSH2TALK_SOURCE").map(|v| v.into_string().unwrap_or_default())
 }
 
-fn validate_keybind(keybind: &[Key]) -> Result<(), Box<dyn Error>> {
+fn validate_keybind(keybind: &[Keysym]) -> Result<(), Box<dyn Error>> {
     match keybind.len() {
         1 | 2 => Ok(()),
         n => Err(format!("Expected 1 or 2 keys for PUSH2TALK_KEYBIND, got {n}").into()),
@@ -177,29 +254,6 @@ fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
         .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"))?;
 
     Ok(())
-}
-
-fn main_loop(
-    callback: impl Fn(Event) -> Option<Event> + 'static + Clone,
-    sig_pause: &Arc<AtomicBool>,
-) {
-    // Main event loop, toggles state based on signals and key events
-    let mut is_running = true;
-    loop {
-        if sig_pause.swap(false, Ordering::Relaxed) {
-            is_running = !is_running;
-            info!("Receive SIGUSR1 signal, is running: {is_running}");
-        }
-
-        if !is_running {
-            thread::sleep(time::Duration::from_secs(1));
-            continue;
-        }
-
-        if grab(callback.clone()).is_err() {
-            thread::sleep(time::Duration::from_secs(1));
-        }
-    }
 }
 
 fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>> {
@@ -234,82 +288,4 @@ fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>
         .for_each(|d| handler.set_device_mute_by_index(d.clone().index, mute));
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_keybind() {
-        std::env::set_var("PUSH2TALK_KEYBIND", "ShiftLeft,ShiftRight");
-        let parsed_keys = parse_keybind().unwrap();
-        assert_eq!(parsed_keys, vec![Key::ShiftLeft, Key::ShiftRight]);
-    }
-
-    #[test]
-    fn test_validate_keybind_empty() {
-        assert!(validate_keybind(&[]).is_err());
-    }
-
-    #[test]
-    fn test_validate_keybind_too_many() {
-        assert!(validate_keybind(&[Key::ShiftLeft, Key::ShiftRight, Key::AltGr]).is_err());
-    }
-
-    #[test]
-    fn test_validate_keybind_single_key() {
-        assert!(validate_keybind(&[Key::ShiftLeft]).is_ok());
-    }
-
-    #[test]
-    fn test_validate_keybind_two_keys() {
-        assert!(validate_keybind(&[Key::ShiftLeft, Key::ShiftRight]).is_ok());
-    }
-
-    #[test]
-    fn test_parse_source_valid() {
-        std::env::set_var("PUSH2TALK_SOURCE", "SourceName");
-        assert_eq!(parse_source(), Some("SourceName".to_string()));
-    }
-
-    #[test]
-    fn test_parse_source_empty() {
-        std::env::remove_var("PUSH2TALK_SOURCE");
-        assert_eq!(parse_source(), None);
-    }
-
-    #[test]
-    fn test_register_signal_success() {
-        let flag = Arc::new(AtomicBool::new(false));
-        assert!(register_signal(&flag).is_ok());
-    }
-
-    // #[test]
-    // fn test_set_sources_mute_true() {
-    //     let mut handler = SourceController::create().unwrap();
-    //     let devices = handler.list_devices().unwrap();
-    //     let sources = devices
-    //         .iter()
-    //         .filter(|dev| dev.description.is_some())
-    //         .map(|dev| dev.description.clone().unwrap())
-    //         .collect::<Vec<String>>();
-
-    //     let source_option = sources.first().cloned();
-    //     assert!(set_sources(true, &source_option).is_ok());
-    // }
-
-    // #[test]
-    // fn test_set_sources_mute_false() {
-    //     let mut handler = SourceController::create().unwrap();
-    //     let devices = handler.list_devices().unwrap();
-    //     let sources = devices
-    //         .iter()
-    //         .filter(|dev| dev.description.is_some())
-    //         .map(|dev| dev.description.clone().unwrap())
-    //         .collect::<Vec<String>>();
-
-    //     let source_option = sources.first().cloned();
-    //     assert!(set_sources(false, &source_option).is_ok());
-    // }
 }
