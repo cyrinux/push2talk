@@ -25,6 +25,9 @@ use std::{
 struct Cli {}
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Initialize cli
+    let _ = Cli::parse();
+
     // Ensure that only one instance run
     let lock_file = take_lock()?;
     if lock_file.try_lock_exclusive().is_err() {
@@ -33,9 +36,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize logging
     setup_logging();
-
-    // Initialize cli
-    let _ = Cli::parse();
 
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
