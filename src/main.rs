@@ -28,8 +28,8 @@ use std::{
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
 
-struct MyLibinputInterface;
-impl LibinputInterface for MyLibinputInterface {
+struct Push2TalkLibinput;
+impl LibinputInterface for Push2TalkLibinput {
     fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
         OpenOptions::new()
             .custom_flags(flags)
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     setup_logging();
 
     // Init libinput
-    let mut libinput_context = Libinput::new_with_udev(MyLibinputInterface);
+    let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
     libinput_context
         .udev_assign_seat("seat0")
         .expect("Can't connect to libinput on seat0");
