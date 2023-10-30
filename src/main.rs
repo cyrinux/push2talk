@@ -290,10 +290,11 @@ fn set_sources(
     tx: mpsc::Sender<()>,
 ) -> Result<(), Box<dyn Error>> {
     // Create a new standard mainloop
-    let mut ml = Mainloop::new().expect("Failed to create mainloop");
+    let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
     // Create a new context
-    let mut lister = Context::new(&ml, "ToggleMuteSources").expect("Failed to create new context");
+    let mut lister =
+        Context::new(&mainloop, "ToggleMuteSources").expect("Failed to create new context");
 
     // Connect the context
     lister
@@ -302,7 +303,7 @@ fn set_sources(
 
     // Wait for context to be ready
     loop {
-        ml.iterate(true);
+        mainloop.iterate(true);
         if lister.get_state() == pulse::context::State::Ready {
             break;
         }
@@ -317,9 +318,7 @@ fn set_sources(
                 let desc = src.description.clone().unwrap();
                 log::trace!("source: {:?}", desc);
                 let toggle = match &source {
-                    Some(v) => {
-                        v == &desc
-                    }
+                    Some(v) => v == &desc,
                     None => true,
                 };
                 if toggle {
@@ -333,9 +332,9 @@ fn set_sources(
         });
 
     // Run the mainloop briefly to process the source info list callback
-    ml.iterate(false);
+    mainloop.iterate(false);
 
-    ml.run().expect("Can't run pulseaudio mainloop");
+    mainloop.run().expect("Can't run pulseaudio mainloop");
 
     Ok(())
 }
