@@ -4,11 +4,8 @@ use fs2::FileExt;
 use input::event::keyboard::KeyState::*;
 use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
-use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
 use log::{debug, info};
-use pulsectl::controllers::types::DeviceInfo;
-use pulsectl::controllers::{DeviceControl, SourceController};
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
@@ -27,6 +24,12 @@ use std::{
 };
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
+extern crate libpulse_binding as pulse;
+
+use pulse::callbacks::ListResult;
+use pulse::context::{Context, FlagSet};
+use pulse::mainloop::standard::Mainloop;
+use std::sync::mpsc;
 
 struct Push2TalkLibinput;
 impl LibinputInterface for Push2TalkLibinput {
@@ -58,12 +61,6 @@ struct Cli {
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize cli
     let cli = Cli::parse();
-
-    // List available sources
-    if cli.list_devices {
-        list_devices()?;
-        return Ok(());
-    }
 
     // Send pause signal
     if cli.toggle_pause {
@@ -111,7 +108,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize mute state
     let last_mute = Cell::new(true);
-    set_sources(true, &source)?;
+
+    // Init tx/rx
+    let (tx, rx) = mpsc::channel();
+
+    let source_clone = source.clone();
+    let tx_clone = tx.clone();
+    thread::spawn(move || {
+        let _ = set_sources(true, source.clone(), tx.clone());
+    });
+    rx.recv()?;
 
     // Initialize key states
     let first_key = keybind_parsed[0];
@@ -157,18 +163,31 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         libinput_context.dispatch()?;
         for event in libinput_context.by_ref() {
-            handle_event(event, &xkb_state, &check_keybind, &last_mute, &source);
+            event_handler(
+                &xkb_state,
+                check_keybind,
+                &last_mute,
+                event,
+                &source_clone,
+                &tx_clone,
+                &rx,
+            )?;
         }
     }
 }
 
-fn handle_event(
-    event: input::Event,
+fn event_handler(
     xkb_state: &xkb::State,
-    check_keybind: &dyn Fn(Keysym, bool) -> bool,
+    check_keybind: impl Fn(Keysym, bool) -> bool,
     last_mute: &Cell<bool>,
+    event: input::Event,
     source: &Option<String>,
-) {
+    tx: &mpsc::Sender<()>,
+    rx: &mpsc::Receiver<()>,
+) -> Result<(), Box<dyn Error>> {
+    let xkb_state = xkb_state;
+    let check_keybind: &dyn Fn(Keysym, bool) -> bool = &check_keybind;
+    let last_mute = last_mute;
     if let input::Event::Keyboard(key_event) = event {
         let keysym = get_keysym(&key_event, xkb_state);
         let pressed = check_pressed(&key_event);
@@ -181,9 +200,18 @@ fn handle_event(
         if should_mute != last_mute.get() {
             info!("Toggle {}", if should_mute { "mute" } else { "unmute" });
             last_mute.set(should_mute);
-            set_sources(should_mute, source).ok();
+
+            let source_clone = source.clone();
+            let tx_clone = tx.clone();
+
+            thread::spawn(move || {
+                let _ = set_sources(should_mute, source_clone.clone(), tx_clone.clone());
+            });
+
+            rx.recv()?;
         }
-    }
+    };
+    Ok(())
 }
 
 fn get_keysym(key_event: &input::event::KeyboardEvent, xkb_state: &xkb::State) -> Keysym {
@@ -197,16 +225,6 @@ fn check_pressed(state: &input::event::KeyboardEvent) -> bool {
         Released => false,
         Pressed => true,
     }
-}
-
-fn list_devices() -> Result<(), Box<dyn Error>> {
-    let mut handler = SourceController::create()?;
-    let sources = handler.list_devices()?;
-    println!("Source devices:");
-    sources.iter().for_each(|d| {
-        println!("\t* {}", d.description.as_ref().unwrap());
-    });
-    Ok(())
 }
 
 fn take_lock() -> Result<std::fs::File, Box<dyn Error>> {
@@ -266,36 +284,58 @@ fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_sources(mute: bool, source: &Option<String>) -> Result<(), Box<dyn Error>> {
-    let mut handler = SourceController::create()?;
-    let sources = handler.list_devices()?;
+fn set_sources(
+    mute: bool,
+    source: Option<String>,
+    tx: mpsc::Sender<()>,
+) -> Result<(), Box<dyn Error>> {
+    // Create a new standard mainloop
+    let mut ml = Mainloop::new().expect("Failed to create mainloop");
 
-    let devices_to_set = if let Some(src) = source {
-        let source = sources
-            .iter()
-            .filter(|dev| {
-                dev.description
-                    .as_ref()
-                    .map(|desc| desc.contains(src))
-                    .unwrap_or(false)
-            })
-            .cloned()
-            .collect::<Vec<DeviceInfo>>()
-            .into_iter()
-            .exactly_one()?;
+    // Create a new context
+    let mut lister = Context::new(&ml, "ToggleMuteSources").expect("Failed to create new context");
 
-        handler
-            .set_default_device(&source.name.clone().unwrap())
-            .map_err(|e| format!("Unable to set default device: {e}"))?;
+    // Connect the context
+    lister
+        .connect(None, FlagSet::NOFLAGS, None)
+        .expect("Failed to connect context");
 
-        vec![source]
-    } else {
-        sources
-    };
+    // Wait for context to be ready
+    loop {
+        ml.iterate(true);
+        if lister.get_state() == pulse::context::State::Ready {
+            break;
+        }
+    }
 
-    devices_to_set
-        .iter()
-        .for_each(|d| handler.set_device_mute_by_index(d.clone().index, mute));
+    let mut muter = lister.introspect();
+
+    lister
+        .introspect()
+        .get_source_info_list(move |devices_list| match devices_list {
+            ListResult::Item(src) => {
+                let desc = src.description.clone().unwrap();
+                log::trace!("source: {:?}", desc);
+                let toggle = match &source {
+                    Some(v) => {
+                        v == &desc
+                    }
+                    None => true,
+                };
+                if toggle {
+                    muter.set_source_mute_by_index(src.index, mute, None);
+                }
+            }
+            ListResult::End => {
+                tx.send(()).unwrap();
+            }
+            _ => (),
+        });
+
+    // Run the mainloop briefly to process the source info list callback
+    ml.iterate(false);
+
+    ml.run().expect("Can't run pulseaudio mainloop");
 
     Ok(())
 }

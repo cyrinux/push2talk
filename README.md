@@ -29,7 +29,7 @@ sudo usermod -a -G input $USER
 
 ## 🎤 Usage
 
-- To get the code name of the keys you want to use, start in trace mode: `env RUST_LOG=trace push2talk`.
+- To get the code name of the keys you want to use, or the source devices available, start in `trace` mode: `env RUST_LOG=trace push2talk`.
 - To set keybind compose of one or two keys, use env var, eg: `env PUSH2TALK_KEYBIND="Control_L,Space" push2talk` or `env PUSH2TALK_KEYBIND="Super_R" push2talk`.
 - To get more log: `RUST_LOG=debug push2talk`.
 - To specify an unique source to manage, use the env var, eg: `env PUSH2TALK_SOURCE="OpenComm by Shokz" push2talk`.
