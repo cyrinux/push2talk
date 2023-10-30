@@ -50,9 +50,6 @@ impl LibinputInterface for Push2TalkLibinput {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// List sources devices
-    #[arg(short, long)]
-    list_devices: bool,
     /// Toggle pause
     #[arg(short, long)]
     toggle_pause: bool,
