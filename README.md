@@ -17,7 +17,7 @@ You can release <kbd>Space</kbd><kbd>Control_Left</kbd> then to mute again.
 
 ## ⚠️ Requirements
 
-User have to be in `input` group (or maybe `plugdev`, depend your distro, check file under `/dev/input/*`).
+User will maybe need to be in `input` group (or maybe `plugdev`, depend your distro, check file under `/dev/input/*`).
 
 ```bash
 sudo usermod -a -G plugdev $USER
