@@ -60,7 +60,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         pulseaudio_ctl
             .run(rx_set_source)
             .expect("Error in pulseaudio thread");
-        // set_sources(rx_set_source).expect("Error in pulseaudio thread");
     });
 
     // Register UNIX signals for pause
