@@ -30,7 +30,7 @@ extern crate libpulse_binding as pulse;
 
 use pulse::callbacks::ListResult;
 use pulse::context::{Context, FlagSet};
-use pulse::mainloop::standard::Mainloop;
+use pulse::mainloop::threaded::Mainloop;
 use std::sync::mpsc;
 
 struct Push2TalkLibinput;
@@ -114,13 +114,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         Receiver<(bool, Option<String>)>,
     ) = mpsc::channel();
 
-    let source_clone = source.clone();
-    let tx_clone = tx.clone();
+    // Start set source thread
+    let tx_set_source = tx.clone();
     thread::spawn(move || {
-        let _ = set_sources(rx);
+        set_sources(rx);
     });
 
-    tx_clone.send((true, source_clone));
+    // Mute on init
+    let _ = tx_set_source.send((true, source.clone()));
 
     // Initialize key states
     let first_key = keybind_parsed[0];
@@ -175,6 +176,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 tx.clone(),
             )?;
         }
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -201,13 +203,10 @@ fn event_handler(
         if should_mute != last_mute.get() {
             info!("Toggle {}", if should_mute { "mute" } else { "unmute" });
             last_mute.set(should_mute);
-
-            let source_clone = source.clone();
-            let tx_clone = tx.clone();
-
-            tx_clone.send((should_mute, source_clone.clone()));
+            let _ = tx.send((should_mute, source.clone()));
         }
     };
+
     Ok(())
 }
 
@@ -281,7 +280,7 @@ fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error>> {
+fn set_sources(rx: Receiver<(bool, Option<String>)>) {
     // Create a new standard mainloop
     let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
@@ -295,8 +294,10 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
         .expect("Failed to connect context");
 
     // Wait for context to be ready
+    mainloop.start().expect("Start mute loop");
+
     loop {
-        mainloop.iterate(true);
+        mainloop.wait();
         if lister.get_state() == pulse::context::State::Ready {
             break;
         }
@@ -304,9 +305,9 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
 
     // Run the mainloop briefly to process the source info list callback
     loop {
-        match rx.try_recv() {
+        match rx.recv() {
             Ok((mute, source)) => {
-                println!("MUTE: {:?} , SOURCE: {:?}", mute, source);
+                mainloop.wait();
                 let mut muter = lister.introspect();
                 lister
                     .introspect()
@@ -322,18 +323,11 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
                                 muter.set_source_mute_by_index(src.index, mute, None);
                             }
                         }
-                        _ => {
-                            thread::sleep(Duration::from_millis(1));
-                        }
+                        _ => {}
                     });
             }
-            Err(_) => {
-                thread::sleep(Duration::from_millis(1));
-                println!("Errr");
-            }
+            Err(_) => {}
         }
-
-        mainloop.iterate(false);
     }
 }
 
