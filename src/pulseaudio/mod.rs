@@ -15,14 +15,11 @@ impl Controller {
     }
 
     pub fn run(&self, rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error>> {
-        // Create a new standard mainloop
         let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
-        // Create a new context
         let mut context =
             Context::new(&mainloop, "Push2talk").expect("Failed to create new context");
 
-        // Connect the context
         context.connect(None, FlagSet::NOFLAGS, None)?;
 
         // Wait for context to be ready
@@ -36,9 +33,7 @@ impl Controller {
             error!("Waiting for pulseaudio to be ready...");
         }
 
-        // Run the mainloop briefly to process the source info list callback
         loop {
-            // Receive block
             if let Ok((mute, source)) = rx.recv() {
                 let mut ctx_volume_controller = context.introspect();
                 context
