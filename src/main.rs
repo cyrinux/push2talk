@@ -5,7 +5,7 @@ use input::event::keyboard::KeyState::*;
 use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
 use libc::{O_RDWR, O_WRONLY};
-use log::{debug, info};
+use log::{debug, info, trace};
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
@@ -45,7 +45,7 @@ impl LibinputInterface for Push2TalkLibinput {
             .map_err(|err| err.raw_os_error().unwrap())
     }
     fn close_restricted(&mut self, fd: OwnedFd) {
-        let _ = File::from(fd);
+        File::from(fd);
     }
 }
 
@@ -83,6 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     setup_logging();
 
     // Init libinput
+    // TODO: replace with new_from_path with keyboard only
     let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
     libinput_context
         .udev_assign_seat("seat0")
@@ -108,20 +109,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize mute state
     let last_mute = Cell::new(true);
 
-    // Init channel for set source
-    let (tx_libinput, rx_set_source): (
-        Sender<(bool, Option<String>)>,
-        Receiver<(bool, Option<String>)>,
-    ) = mpsc::channel();
+    // Init channel for set sources
+    let (tx_libinput, rx_set_source) = mpsc::channel();
 
     // Start set source thread
-    let tx_set_source = tx_libinput.clone();
     thread::spawn(move || {
         set_sources(rx_set_source);
     });
 
     // Mute on init
-    let _ = tx_set_source.send((true, source.clone()));
+    let tx_set_source = tx_libinput.clone();
+    tx_set_source.send((true, source.clone()))?;
 
     // Initialize key states
     let first_key = keybind_parsed[0];
@@ -190,22 +188,22 @@ fn event_handler(
     source: &Option<String>,
     tx: Sender<(bool, Option<String>)>,
 ) -> Result<(), Box<dyn Error>> {
-    let xkb_state = xkb_state;
-    let check_keybind: &dyn Fn(Keysym, bool) -> bool = &check_keybind;
-    let last_mute = last_mute;
     if let input::Event::Keyboard(key_event) = event {
         let keysym = get_keysym(&key_event, xkb_state);
         let pressed = check_pressed(&key_event);
-        log::trace!(
+        trace!(
             "Key {}: {}",
             if pressed { "pressed" } else { "released" },
             xkb::keysym_get_name(keysym)
         );
         let should_mute = check_keybind(keysym, pressed);
         if should_mute != last_mute.get() {
-            info!("Toggle {}", if should_mute { "mute" } else { "unmute" });
+            debug!(
+                "Microphone is {}",
+                if should_mute { "muted" } else { "unmuted" }
+            );
             last_mute.set(should_mute);
-            let _ = tx.send((should_mute, source.clone()));
+            tx.send((should_mute, source.clone()))?;
         }
     };
 
@@ -313,7 +311,7 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) {
                 .get_source_info_list(move |devices_list| match devices_list {
                     ListResult::Item(src) => {
                         let desc = src.description.clone().unwrap();
-                        log::trace!("source: {:?}", desc);
+                        trace!("source: {:?}", desc);
                         let toggle = match &source {
                             Some(v) => v == &desc,
                             None => true,
