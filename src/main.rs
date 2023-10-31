@@ -341,8 +341,8 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
             let mut ctx_volume_controller = context.introspect();
             context
                 .introspect()
-                .get_source_info_list(move |devices_list| match devices_list {
-                    ListResult::Item(src) => {
+                .get_source_info_list(move |devices_list| {
+                    if let ListResult::Item(src) = devices_list {
                         let toggle = match &source {
                             Some(v) => src.description.as_ref().map_or(false, |d| v == d),
                             None => true,
@@ -352,7 +352,6 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
                             ctx_volume_controller.set_source_mute_by_index(src.index, mute, None);
                         }
                     }
-                    _ => {}
                 });
         }
     }
