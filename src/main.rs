@@ -317,8 +317,7 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
     let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
     // Create a new context
-    let mut context =
-        Context::new(&mainloop, "ToggleMuteSources").expect("Failed to create new context");
+    let mut context = Context::new(&mainloop, "Push2talk").expect("Failed to create new context");
 
     // Connect the context
     context.connect(None, FlagSet::NOFLAGS, None)?;
