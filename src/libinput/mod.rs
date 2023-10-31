@@ -19,7 +19,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread, time,
 };
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
@@ -75,26 +74,34 @@ impl Controller {
         loop {
             unsafe {
                 if libc::poll(fds.as_mut_ptr(), 1, poll_timeout) < 0 {
+                    // on pause signal send, libc abort polling and
+                    // receive EINTR error
+                    if *libc::__errno_location() == libc::EINTR {
+                        continue;
+                    }
                     return Err("Unable to poll libinput, aborting".into());
                 }
             }
+
+            libinput_context.dispatch()?;
 
             if sig_pause.swap(false, Ordering::Relaxed) {
                 is_running = !is_running;
                 info!(
                     "Received SIGUSR1 signal, {}",
                     if is_running { "resuming" } else { "pausing" }
-                )
+                );
+
+                // ignore final events that happened just before the resume signal
+                if is_running {
+                    libinput_context.by_ref().for_each(drop);
+                }
             }
 
-            if !is_running {
-                thread::sleep(time::Duration::from_secs(1));
-                continue;
-            }
-
-            libinput_context.dispatch()?;
             for event in libinput_context.by_ref() {
-                self.handle(event, tx.clone())?;
+                if is_running {
+                    self.handle(event, tx.clone())?;
+                }
             }
         }
     }
