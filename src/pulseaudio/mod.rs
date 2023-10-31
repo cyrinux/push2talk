@@ -47,7 +47,10 @@ impl Controller {
                         if let ListResult::Item(src) = devices_list {
                             let toggle = match &source {
                                 Some(v) => src.description.as_ref().map_or(false, |d| v == d),
-                                None => true,
+                                None => src
+                                    .description
+                                    .as_ref()
+                                    .map_or(true, |d| !d.to_lowercase().contains("easy effects")),
                             };
                             trace!("device source: {:?}", src.description);
                             if toggle {
