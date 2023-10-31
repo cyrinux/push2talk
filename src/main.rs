@@ -5,7 +5,7 @@ use input::event::keyboard::KeyState::*;
 use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
 use libc::{O_RDWR, O_WRONLY};
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
@@ -45,7 +45,8 @@ impl LibinputInterface for Push2TalkLibinput {
             .map_err(|err| err.raw_os_error().unwrap())
     }
     fn close_restricted(&mut self, fd: OwnedFd) {
-        File::from(fd);
+        let file = File::from(fd);
+        drop(file);
     }
 }
 
@@ -114,7 +115,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start set source thread
     thread::spawn(move || {
-        set_sources(rx_set_source);
+        set_sources(rx_set_source).expect("Error in pulseaudio thread");
     });
 
     // Mute on init
@@ -280,44 +281,47 @@ fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_sources(rx: Receiver<(bool, Option<String>)>) {
+fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error>> {
     // Create a new standard mainloop
     let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
     // Create a new context
-    let mut lister =
+    let mut ctx_list_devices =
         Context::new(&mainloop, "ToggleMuteSources").expect("Failed to create new context");
 
     // Connect the context
-    lister
+    ctx_list_devices
         .connect(None, FlagSet::NOFLAGS, None)
         .expect("Failed to connect context");
 
     // Wait for context to be ready
     mainloop.start().expect("Start mute loop");
     loop {
-        if lister.get_state() == pulse::context::State::Ready {
+        thread::sleep(Duration::from_secs(1));
+        if ctx_list_devices.get_state() == pulse::context::State::Ready {
             break;
         }
+
+        error!("Waiting for pulseaudio to be ready...");
     }
 
     // Run the mainloop briefly to process the source info list callback
     loop {
         // Receive block
         if let Ok((mute, source)) = rx.recv() {
-            let mut muter = lister.introspect();
-            lister
+            let mut ctx_volume_controller = ctx_list_devices.introspect();
+            ctx_list_devices
                 .introspect()
                 .get_source_info_list(move |devices_list| match devices_list {
                     ListResult::Item(src) => {
                         let desc = src.description.clone().unwrap();
-                        trace!("source: {:?}", desc);
+                        trace!("device source: {desc}");
                         let toggle = match &source {
                             Some(v) => v == &desc,
                             None => true,
                         };
                         if toggle {
-                            muter.set_source_mute_by_index(src.index, mute, None);
+                            ctx_volume_controller.set_source_mute_by_index(src.index, mute, None);
                         }
                     }
                     _ => {}
