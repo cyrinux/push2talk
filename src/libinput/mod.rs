@@ -54,14 +54,9 @@ impl Controller {
         })
     }
 
-    pub fn run(
-        &self,
-        source: Option<String>,
-        tx: Sender<(bool, Option<String>)>,
-        sig_pause: Arc<AtomicBool>,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn run(&self, tx: Sender<bool>, sig_pause: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
         // Mute on init
-        tx.send((true, source.clone()))?;
+        tx.send(true)?;
 
         let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
         libinput_context
@@ -99,17 +94,12 @@ impl Controller {
 
             libinput_context.dispatch()?;
             for event in libinput_context.by_ref() {
-                self.handle(event, &source, tx.clone())?;
+                self.handle(event, tx.clone())?;
             }
         }
     }
 
-    fn handle(
-        &self,
-        event: input::Event,
-        source: &Option<String>,
-        tx: Sender<(bool, Option<String>)>,
-    ) -> Result<(), Box<dyn Error>> {
+    fn handle(&self, event: input::Event, tx: Sender<bool>) -> Result<(), Box<dyn Error>> {
         if let input::Event::Keyboard(key_event) = event {
             let keysym = get_keysym(&key_event, &self.xkb_state);
             let pressed = check_pressed(&key_event);
@@ -128,7 +118,7 @@ impl Controller {
                     if should_mute { "muted" } else { "unmuted" }
                 );
                 self.last_mute.set(should_mute);
-                tx.send((should_mute, source.clone()))?;
+                tx.send(should_mute)?;
             }
         };
 

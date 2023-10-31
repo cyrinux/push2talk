@@ -7,14 +7,18 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 use std::{env, thread};
 
-pub struct Controller {}
+pub struct Controller {
+    source: Option<String>,
+}
 
 impl Controller {
     pub fn new() -> Self {
-        Controller {}
+        Controller {
+            source: parse_source(),
+        }
     }
 
-    pub fn run(&self, rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error>> {
+    pub fn run(&self, rx: Receiver<bool>) -> Result<(), Box<dyn Error>> {
         let mut mainloop = Mainloop::new().ok_or("Failed to create mainloop")?;
 
         let mut context =
@@ -34,8 +38,9 @@ impl Controller {
         }
 
         loop {
-            if let Ok((mute, source)) = rx.recv() {
+            if let Ok(mute) = rx.recv() {
                 let mut ctx_volume_controller = context.introspect();
+                let source = self.source.clone();
                 context
                     .introspect()
                     .get_source_info_list(move |devices_list| {
@@ -56,7 +61,7 @@ impl Controller {
     }
 }
 
-pub fn parse_source() -> Option<String> {
+fn parse_source() -> Option<String> {
     env::var_os("PUSH2TALK_SOURCE").map(|v| v.into_string().unwrap_or_default())
 }
 

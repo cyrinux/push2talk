@@ -52,9 +52,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let libinput_ctl = libinput::Controller::new()?;
     let pulseaudio_ctl = pulseaudio::Controller::new();
 
-    // Parse source environment variable
-    let source = pulseaudio::parse_source();
-
     // Init channel for set sources
     let (tx_libinput, rx_set_source) = mpsc::channel();
 
@@ -74,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     info!("Push2talk started");
 
     // Init libinput
-    libinput_ctl.run(source, tx_libinput, sig_pause)?;
+    libinput_ctl.run(tx_libinput, sig_pause)?;
 
     Ok(())
 }
