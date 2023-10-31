@@ -25,7 +25,7 @@ sudo usermod -a -G input $USER
 ## 📦 Installation
 
 - There is a AUR for [archlinux](https://aur.archlinux.org/packages/push2talk-git)
-- For other distro, you can `cargo install --git https://github.com/cyrinux/push2talk`
+- For other distro, you can `cargo install push2talk`
 
 ## 🎤 Usage
 
