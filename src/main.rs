@@ -4,6 +4,7 @@ use fs2::FileExt;
 use input::event::keyboard::KeyState::*;
 use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
+use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
 use log::{debug, error, info, trace};
 use signal_hook::flag;
@@ -105,7 +106,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Parse source environment variable
     let source = parse_source();
 
-    debug!("Settings: source: {source:?}, keybind: {keybind_parsed:?}");
+    // Get human keys name
+    let keybind_names = keybind_parsed
+        .iter()
+        .map(|k| xkb::keysym_get_name(*k))
+        .join(",");
+
+    debug!("Settings: source: {source:?}, keybind: {keybind_names}");
 
     // Initialize mute state
     let last_mute = Cell::new(true);
@@ -286,19 +293,19 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
     let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
     // Create a new context
-    let mut ctx_list_devices =
+    let mut context =
         Context::new(&mainloop, "ToggleMuteSources").expect("Failed to create new context");
 
     // Connect the context
-    ctx_list_devices
+    context
         .connect(None, FlagSet::NOFLAGS, None)
         .expect("Failed to connect context");
 
     // Wait for context to be ready
     mainloop.start().expect("Start mute loop");
     loop {
-        thread::sleep(Duration::from_secs(1));
-        if ctx_list_devices.get_state() == pulse::context::State::Ready {
+        thread::sleep(Duration::from_millis(250));
+        if context.get_state() == pulse::context::State::Ready {
             break;
         }
 
@@ -309,17 +316,16 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
     loop {
         // Receive block
         if let Ok((mute, source)) = rx.recv() {
-            let mut ctx_volume_controller = ctx_list_devices.introspect();
-            ctx_list_devices
+            let mut ctx_volume_controller = context.introspect();
+            context
                 .introspect()
                 .get_source_info_list(move |devices_list| match devices_list {
                     ListResult::Item(src) => {
-                        let desc = src.description.clone().unwrap();
-                        trace!("device source: {desc}");
                         let toggle = match &source {
-                            Some(v) => v == &desc,
+                            Some(v) => src.description.as_ref().map_or(false, |d| v == d),
                             None => true,
                         };
+                        trace!("device source: {:?}", src.description);
                         if toggle {
                             ctx_volume_controller.set_source_mute_by_index(src.index, mute, None);
                         }
