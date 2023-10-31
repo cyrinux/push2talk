@@ -7,6 +7,9 @@ use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
 use log::{debug, error, info, trace};
+use pulse::callbacks::ListResult;
+use pulse::context::{Context, FlagSet};
+use pulse::mainloop::threaded::Mainloop;
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
@@ -14,6 +17,7 @@ use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 use std::{
@@ -28,12 +32,6 @@ use std::{
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
 extern crate libpulse_binding as pulse;
-use std::fs;
-
-use pulse::callbacks::ListResult;
-use pulse::context::{Context, FlagSet};
-use pulse::mainloop::threaded::Mainloop;
-use std::sync::mpsc;
 
 struct Push2TalkLibinput;
 impl LibinputInterface for Push2TalkLibinput {
@@ -86,18 +84,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     setup_logging();
 
     // Init libinput
-    // let mut libinput_context = Libinput::new_from_path(Push2TalkLibinput);
-    let mut libinput_context = Libinput::new_from_path(Push2TalkLibinput);
-
-    // Add keyboard
-    fs::read_dir("/dev/input/by-path")?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_name().to_string_lossy().contains("kbd"))
-        .for_each(|entry| {
-            let path = entry.path();
-            let device = path.to_string_lossy().into_owned();
-            libinput_context.path_add_device(&device);
-        });
+    let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
+    libinput_context
+        .udev_assign_seat("seat0")
+        .map_err(|e| format!("Can't connect to libinput on seat0: {e:?}"))?;
 
     // Create context
     let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
