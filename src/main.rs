@@ -28,6 +28,7 @@ use std::{
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
 extern crate libpulse_binding as pulse;
+use std::fs;
 
 use pulse::callbacks::ListResult;
 use pulse::context::{Context, FlagSet};
@@ -85,11 +86,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     setup_logging();
 
     // Init libinput
-    // TODO: replace with new_from_path with keyboard only
-    let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
-    libinput_context
-        .udev_assign_seat("seat0")
-        .map_err(|e| format!("Can't connect to libinput on seat0: {e:?}"))?;
+    // let mut libinput_context = Libinput::new_from_path(Push2TalkLibinput);
+    let mut libinput_context = Libinput::new_from_path(Push2TalkLibinput);
+
+    // Add keyboard
+    fs::read_dir("/dev/input/by-path")?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().contains("kbd"))
+        .for_each(|entry| {
+            let path = entry.path();
+            let device = path.to_string_lossy().into_owned();
+            libinput_context.path_add_device(&device);
+        });
 
     // Create context
     let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
@@ -184,7 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         // Prevent burning cpu
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(Duration::from_millis(2));
     }
 }
 
