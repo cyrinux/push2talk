@@ -7,7 +7,6 @@ use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
 use log::{debug, error, info, trace};
-use nix::poll::{poll, PollFd, PollFlags};
 use pulse::callbacks::ListResult;
 use pulse::context::{Context, FlagSet};
 use pulse::mainloop::threaded::Mainloop;
@@ -153,41 +152,50 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start the application
     info!("Push2talk started");
+
     // Init libinput
     let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
-    libinput_context.udev_assign_seat("seat0").unwrap();
-    let mut libinput_context2 = Libinput::new_with_udev(Push2TalkLibinput);
-    libinput_context2.udev_assign_seat("seat0").unwrap();
-    let pollfd = PollFd::new(&libinput_context2, PollFlags::POLLIN);
-    while poll(&mut [pollfd], -1).is_ok() {
-        if sig_pause.swap(false, Ordering::Relaxed) {
-            is_running = !is_running;
-            info!(
-                "Receive SIGUSR1 signal, {}",
-                if is_running { "resuming" } else { "pausing" }
-            )
-        }
+    libinput_context
+        .udev_assign_seat("seat0")
+        .map_err(|e| format!("Can't connect to libinput on seat0: {e:?}"))?;
 
-        if !is_running {
-            thread::sleep(time::Duration::from_secs(1));
-            continue;
-        }
+    let mut fds = [libc::pollfd {
+        fd: libinput_context.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    }];
 
-        libinput_context.dispatch()?;
-        for event in libinput_context.by_ref() {
-            event_handler(
-                &xkb_state,
-                check_keybind,
-                &last_mute,
-                event,
-                &source,
-                tx_libinput.clone(),
-            )?;
-        }
+    let timeout = 1000; // in milliseconds
 
-        // Prevent burning cpu
-        thread::sleep(Duration::from_millis(2));
+    unsafe {
+        while libc::poll(fds.as_mut_ptr(), 1, timeout) >= 0 {
+            if sig_pause.swap(false, Ordering::Relaxed) {
+                is_running = !is_running;
+                info!(
+                    "Receive SIGUSR1 signal, {}",
+                    if is_running { "resuming" } else { "pausing" }
+                )
+            }
+
+            if !is_running {
+                thread::sleep(time::Duration::from_secs(1));
+                continue;
+            }
+
+            libinput_context.dispatch()?;
+            for event in libinput_context.by_ref() {
+                event_handler(
+                    &xkb_state,
+                    check_keybind,
+                    &last_mute,
+                    event,
+                    &source,
+                    tx_libinput.clone(),
+                )?;
+            }
+        }
     }
+
     Ok(())
 }
 
