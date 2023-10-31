@@ -86,14 +86,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     setup_logging();
 
-    // Create context
-    let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
-
-    // Load keymap informations
-    let keymap =
-        xkb::Keymap::new_from_names(&xkb_context, "", "", "", "", None, xkb::COMPILE_NO_FLAGS)
-            .unwrap();
-
     // Parse and validate keybinding environment variable
     let keybind_parsed = parse_keybind()?;
     validate_keybind(&keybind_parsed)?;
@@ -108,9 +100,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .join(",");
 
     debug!("Settings: source: {source:?}, keybind: {keybind_names}");
-
-    // Initialize mute state
-    let last_mute = Cell::new(true);
 
     // Init channel for set sources
     let (tx_libinput, rx_set_source) = mpsc::channel();
@@ -134,11 +123,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sig_pause = Arc::new(AtomicBool::new(false));
     register_signal(&sig_pause)?;
 
-    // Create the state tracker
-    let xkb_state = xkb::State::new(&keymap);
-
     // Main event loop, toggles state based on signals and key events
-    let mut is_running = true;
 
     // Check keybind closure
     let check_keybind = |key: Keysym, pressed: bool| -> bool {
@@ -154,6 +139,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     info!("Push2talk started");
 
     // Init libinput
+    listen_libinput(check_keybind, source, sig_pause, tx_libinput)?;
+
+    Ok(())
+}
+
+fn listen_libinput(
+    check_keybind: impl Fn(Keysym, bool) -> bool,
+    source: Option<String>,
+    sig_pause: Arc<AtomicBool>,
+    tx_libinput: Sender<(bool, Option<String>)>,
+) -> Result<(), Box<dyn Error>> {
     let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
     libinput_context
         .udev_assign_seat("seat0")
@@ -165,38 +161,55 @@ fn main() -> Result<(), Box<dyn Error>> {
         revents: 0,
     }];
 
-    let timeout = 1000; // in milliseconds
+    let poll_timeout = 1000;
+    let mut is_running = true;
 
-    unsafe {
-        while libc::poll(fds.as_mut_ptr(), 1, timeout) >= 0 {
-            if sig_pause.swap(false, Ordering::Relaxed) {
-                is_running = !is_running;
-                info!(
-                    "Receive SIGUSR1 signal, {}",
-                    if is_running { "resuming" } else { "pausing" }
-                )
-            }
+    // Initialize mute state
+    let last_mute = Cell::new(true);
 
-            if !is_running {
-                thread::sleep(time::Duration::from_secs(1));
-                continue;
-            }
+    // Create context
+    let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
 
-            libinput_context.dispatch()?;
-            for event in libinput_context.by_ref() {
-                event_handler(
-                    &xkb_state,
-                    check_keybind,
-                    &last_mute,
-                    event,
-                    &source,
-                    tx_libinput.clone(),
-                )?;
+    // Load keymap informations
+    let keymap =
+        xkb::Keymap::new_from_names(&xkb_context, "", "", "", "", None, xkb::COMPILE_NO_FLAGS)
+            .unwrap();
+
+    // Create the state tracker
+    let xkb_state = xkb::State::new(&keymap);
+
+    loop {
+        unsafe {
+            if libc::poll(fds.as_mut_ptr(), 1, poll_timeout) < 0 {
+                return Err("Unable to poll libinput, aborting".into());
             }
         }
-    }
 
-    Ok(())
+        if sig_pause.swap(false, Ordering::Relaxed) {
+            is_running = !is_running;
+            info!(
+                "Received SIGUSR1 signal, {}",
+                if is_running { "resuming" } else { "pausing" }
+            )
+        }
+
+        if !is_running {
+            thread::sleep(time::Duration::from_secs(1));
+            continue;
+        }
+
+        libinput_context.dispatch()?;
+        for event in libinput_context.by_ref() {
+            event_handler(
+                &xkb_state,
+                &check_keybind,
+                &last_mute,
+                event,
+                &source,
+                tx_libinput.clone(),
+            )?;
+        }
+    }
 }
 
 fn event_handler(
