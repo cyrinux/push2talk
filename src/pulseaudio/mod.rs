@@ -15,15 +15,15 @@ impl Controller {
     }
 
     pub fn run(&self, rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error>> {
-        let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
+        let mut mainloop = Mainloop::new().ok_or("Failed to create mainloop")?;
 
         let mut context =
-            Context::new(&mainloop, "Push2talk").expect("Failed to create new context");
+            Context::new(&mainloop, "Push2talk").ok_or("Failed to create new context")?;
 
         context.connect(None, FlagSet::NOFLAGS, None)?;
 
         // Wait for context to be ready
-        mainloop.start().expect("Start mute loop");
+        mainloop.start()?;
         loop {
             thread::sleep(Duration::from_millis(250));
             if context.get_state() == libpulse_binding::context::State::Ready {
