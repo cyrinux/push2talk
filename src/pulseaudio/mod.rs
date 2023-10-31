@@ -1,12 +1,11 @@
+use libpulse_binding::callbacks::ListResult;
+use libpulse_binding::context::{Context, FlagSet};
+use libpulse_binding::mainloop::threaded::Mainloop;
 use log::{error, trace};
-use pulse::callbacks::ListResult;
-use pulse::context::{Context, FlagSet};
-use pulse::mainloop::threaded::Mainloop;
 use std::error::Error;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 use std::{env, thread};
-extern crate libpulse_binding as pulse;
 
 pub struct Controller {}
 
@@ -30,7 +29,7 @@ impl Controller {
         mainloop.start().expect("Start mute loop");
         loop {
             thread::sleep(Duration::from_millis(250));
-            if context.get_state() == pulse::context::State::Ready {
+            if context.get_state() == libpulse_binding::context::State::Ready {
                 break;
             }
 
