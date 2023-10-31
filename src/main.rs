@@ -156,7 +156,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Init libinput
     let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
     libinput_context.udev_assign_seat("seat0").unwrap();
-    let pollfd = PollFd::new(&libinput_context.as_raw_fd(), PollFlags::POLLIN);
+    let mut libinput_context2 = Libinput::new_with_udev(Push2TalkLibinput);
+    libinput_context2.udev_assign_seat("seat0").unwrap();
+    let pollfd = PollFd::new(&libinput_context2, PollFlags::POLLIN);
     while poll(&mut [pollfd], -1).is_ok() {
         if sig_pause.swap(false, Ordering::Relaxed) {
             is_running = !is_running;
@@ -298,9 +300,7 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error
         Context::new(&mainloop, "ToggleMuteSources").expect("Failed to create new context");
 
     // Connect the context
-    context
-        .connect(None, FlagSet::NOFLAGS, None)
-        .expect("Failed to connect context");
+    context.connect(None, FlagSet::NOFLAGS, None)?;
 
     // Wait for context to be ready
     mainloop.start().expect("Start mute loop");
