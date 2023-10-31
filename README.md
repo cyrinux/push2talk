@@ -1,6 +1,8 @@
 ![](https://img.shields.io/github/issues-raw/cyrinux/push2talk)
 ![](https://img.shields.io/github/stars/cyrinux/push2talk)
 ![](https://img.shields.io/aur/version/push2talk-git)
+![](https://img.shields.io/crates/d/push2talk)
+![](https://img.shields.io/crates/v/push2talk)
 
 ![a push to talk logo created by dall-e](./pictures/logo-small.png)
 
