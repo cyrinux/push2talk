@@ -25,3 +25,4 @@ strum = "0.25.0"
 strum_macros = "0.25.3"
 xkbcommon = "0.7.0"
 libpulse-binding = "2.0"
+nix = { version = "0.27.1", features = ["poll"] }

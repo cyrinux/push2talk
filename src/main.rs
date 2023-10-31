@@ -7,13 +7,17 @@ use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
 use log::{debug, error, info, trace};
+use nix::poll::{poll, PollFd, PollFlags};
 use pulse::callbacks::ListResult;
 use pulse::context::{Context, FlagSet};
 use pulse::mainloop::threaded::Mainloop;
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
-use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
+use std::os::unix::{
+    fs::OpenOptionsExt,
+    io::{AsRawFd, OwnedFd},
+};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -83,12 +87,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     setup_logging();
 
-    // Init libinput
-    let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
-    libinput_context
-        .udev_assign_seat("seat0")
-        .map_err(|e| format!("Can't connect to libinput on seat0: {e:?}"))?;
-
     // Create context
     let xkb_context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
 
@@ -155,7 +153,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start the application
     info!("Push2talk started");
-    loop {
+    // Init libinput
+    let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
+    libinput_context.udev_assign_seat("seat0").unwrap();
+    let pollfd = PollFd::new(&libinput_context.as_raw_fd(), PollFlags::POLLIN);
+    while poll(&mut [pollfd], -1).is_ok() {
         if sig_pause.swap(false, Ordering::Relaxed) {
             is_running = !is_running;
             info!(
@@ -184,6 +186,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Prevent burning cpu
         thread::sleep(Duration::from_millis(2));
     }
+    Ok(())
 }
 
 fn event_handler(
