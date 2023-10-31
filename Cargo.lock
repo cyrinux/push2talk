@@ -378,14 +378,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsectl-rs"
-version = "0.3.2"
-source = "git+https://github.com/cyrinux/pulsectl-rs?branch=main#e23ba51420825d78c883606497c53115801342e2"
-dependencies = [
- "libpulse-binding",
-]
-
-[[package]]
 name = "push2talk"
 version = "1.1.0"
 dependencies = [
@@ -396,8 +388,8 @@ dependencies = [
  "input",
  "itertools",
  "libc",
+ "libpulse-binding",
  "log",
- "pulsectl-rs",
  "signal-hook",
  "strum",
  "strum_macros",
