@@ -13,6 +13,8 @@ use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 use std::{
     cell::Cell,
     env,
@@ -107,14 +109,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let last_mute = Cell::new(true);
 
     // Init tx/rx
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx): (
+        Sender<(bool, Option<String>)>,
+        Receiver<(bool, Option<String>)>,
+    ) = mpsc::channel();
 
     let source_clone = source.clone();
     let tx_clone = tx.clone();
     thread::spawn(move || {
-        let _ = set_sources(true, source.clone(), tx.clone());
+        let _ = set_sources(rx);
     });
-    rx.recv()?;
+
+    tx_clone.send((true, source_clone));
 
     // Initialize key states
     let first_key = keybind_parsed[0];
@@ -165,9 +171,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 check_keybind,
                 &last_mute,
                 event,
-                &source_clone,
-                &tx_clone,
-                &rx,
+                &source,
+                tx.clone(),
             )?;
         }
     }
@@ -179,8 +184,7 @@ fn event_handler(
     last_mute: &Cell<bool>,
     event: input::Event,
     source: &Option<String>,
-    tx: &mpsc::Sender<()>,
-    rx: &mpsc::Receiver<()>,
+    tx: Sender<(bool, Option<String>)>,
 ) -> Result<(), Box<dyn Error>> {
     let xkb_state = xkb_state;
     let check_keybind: &dyn Fn(Keysym, bool) -> bool = &check_keybind;
@@ -201,11 +205,7 @@ fn event_handler(
             let source_clone = source.clone();
             let tx_clone = tx.clone();
 
-            thread::spawn(move || {
-                let _ = set_sources(should_mute, source_clone.clone(), tx_clone.clone());
-            });
-
-            rx.recv()?;
+            tx_clone.send((should_mute, source_clone.clone()));
         }
     };
     Ok(())
@@ -281,11 +281,7 @@ fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_sources(
-    mute: bool,
-    source: Option<String>,
-    tx: mpsc::Sender<()>,
-) -> Result<(), Box<dyn Error>> {
+fn set_sources(rx: Receiver<(bool, Option<String>)>) -> Result<(), Box<dyn Error>> {
     // Create a new standard mainloop
     let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
@@ -306,34 +302,39 @@ fn set_sources(
         }
     }
 
-    let mut muter = lister.introspect();
-
-    lister
-        .introspect()
-        .get_source_info_list(move |devices_list| match devices_list {
-            ListResult::Item(src) => {
-                let desc = src.description.clone().unwrap();
-                log::trace!("source: {:?}", desc);
-                let toggle = match &source {
-                    Some(v) => v == &desc,
-                    None => true,
-                };
-                if toggle {
-                    muter.set_source_mute_by_index(src.index, mute, None);
-                }
-            }
-            ListResult::End => {
-                tx.send(()).unwrap();
-            }
-            _ => (),
-        });
-
     // Run the mainloop briefly to process the source info list callback
-    mainloop.iterate(false);
+    loop {
+        match rx.try_recv() {
+            Ok((mute, source)) => {
+                println!("MUTE: {:?} , SOURCE: {:?}", mute, source);
+                let mut muter = lister.introspect();
+                lister
+                    .introspect()
+                    .get_source_info_list(move |devices_list| match devices_list {
+                        ListResult::Item(src) => {
+                            let desc = src.description.clone().unwrap();
+                            log::trace!("source: {:?}", desc);
+                            let toggle = match &source {
+                                Some(v) => v == &desc,
+                                None => true,
+                            };
+                            if toggle {
+                                muter.set_source_mute_by_index(src.index, mute, None);
+                            }
+                        }
+                        _ => {
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                    });
+            }
+            Err(_) => {
+                thread::sleep(Duration::from_millis(1));
+                println!("Errr");
+            }
+        }
 
-    mainloop.run().expect("Can't run pulseaudio mainloop");
-
-    Ok(())
+        mainloop.iterate(false);
+    }
 }
 
 #[cfg(test)]
