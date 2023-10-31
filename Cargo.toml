@@ -1,6 +1,6 @@
 [package]
 name = "push2talk"
-version = "1.2.1"
+version = "1.2.2"
 edition = "2021"
 authors = ["Cyril Levis", "Maxim Baz"]
 categories = ["gui", "multimedia::audio"]
