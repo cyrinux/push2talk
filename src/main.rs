@@ -108,16 +108,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize mute state
     let last_mute = Cell::new(true);
 
-    // Init tx/rx
-    let (tx, rx): (
+    // Init channel for set source
+    let (tx_libinput, rx_set_source): (
         Sender<(bool, Option<String>)>,
         Receiver<(bool, Option<String>)>,
     ) = mpsc::channel();
 
     // Start set source thread
-    let tx_set_source = tx.clone();
+    let tx_set_source = tx_libinput.clone();
     thread::spawn(move || {
-        set_sources(rx);
+        set_sources(rx_set_source);
     });
 
     // Mute on init
@@ -173,10 +173,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 &last_mute,
                 event,
                 &source,
-                tx.clone(),
+                tx_libinput.clone(),
             )?;
         }
-        thread::sleep(Duration::from_millis(10));
+
+        // Prevent burning cpu
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -295,9 +297,7 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) {
 
     // Wait for context to be ready
     mainloop.start().expect("Start mute loop");
-
     loop {
-        mainloop.wait();
         if lister.get_state() == pulse::context::State::Ready {
             break;
         }
@@ -305,28 +305,25 @@ fn set_sources(rx: Receiver<(bool, Option<String>)>) {
 
     // Run the mainloop briefly to process the source info list callback
     loop {
-        match rx.recv() {
-            Ok((mute, source)) => {
-                mainloop.wait();
-                let mut muter = lister.introspect();
-                lister
-                    .introspect()
-                    .get_source_info_list(move |devices_list| match devices_list {
-                        ListResult::Item(src) => {
-                            let desc = src.description.clone().unwrap();
-                            log::trace!("source: {:?}", desc);
-                            let toggle = match &source {
-                                Some(v) => v == &desc,
-                                None => true,
-                            };
-                            if toggle {
-                                muter.set_source_mute_by_index(src.index, mute, None);
-                            }
+        // Receive block
+        if let Ok((mute, source)) = rx.recv() {
+            let mut muter = lister.introspect();
+            lister
+                .introspect()
+                .get_source_info_list(move |devices_list| match devices_list {
+                    ListResult::Item(src) => {
+                        let desc = src.description.clone().unwrap();
+                        log::trace!("source: {:?}", desc);
+                        let toggle = match &source {
+                            Some(v) => v == &desc,
+                            None => true,
+                        };
+                        if toggle {
+                            muter.set_source_mute_by_index(src.index, mute, None);
                         }
-                        _ => {}
-                    });
-            }
-            Err(_) => {}
+                    }
+                    _ => {}
+                });
         }
     }
 }
