@@ -92,6 +92,9 @@ impl Controller {
                     if is_running { "resuming" } else { "pausing" }
                 );
 
+                // Toggle mute on pause/resume
+                tx.send(is_running)?;
+
                 // ignore final events that happened just before the resume signal
                 if is_running {
                     libinput_context.by_ref().for_each(drop);
