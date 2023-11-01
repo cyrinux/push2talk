@@ -4,47 +4,50 @@
 ![](https://img.shields.io/crates/d/push2talk)
 ![](https://img.shields.io/crates/v/push2talk)
 
-![a push to talk logo created by dall-e](./pictures/logo-small.png)
+![Push-to-Talk Logo](./pictures/logo-small.png)
 
-# Push to talk - working with both wayland/x11 and pulseaudio (pipewire)
+# Push-to-Talk: Seamless Integration with Wayland, X11, PulseAudio & PipeWire
 
-## 🥅How to use it ?
+## 🥅 Quick Start
 
-At start it will mute all your sources (microphone) and then you will have to press <kbd>Control_Left</kbd>+<kbd>Space</kbd> to unmute.
-You can release <kbd>Space</kbd><kbd>Control_Left</kbd> then to mute again.
+Upon initialization, the application mutes all microphones. To unmute, press <kbd>Control_Left</kbd>+<kbd>Space</kbd>, and release to mute again.
 
-- You can pause/resume the program with sending a `SIGUSR1` signal.
+- Suspend/resume functionality available via `SIGUSR1`.
 
-## ⚠️ Requirements
+## ⚠️ Prerequisites
 
-User will maybe need to be in `input` group (or maybe `plugdev`, depend your distro, check file under `/dev/input/*`).
+Membership in the `input` or `plugdev` group may be necessary. Check `/dev/input/*` for your specific distribution.
 
 ```bash
 sudo usermod -a -G plugdev $USER
 sudo usermod -a -G input $USER
 ```
 
-## 📦 Installation
+## 📦 Installation Methods
 
-- There is a AUR for [archlinux](https://aur.archlinux.org/packages/push2talk-git)
-- For other distro, you can `cargo install push2talk`
+- Arch Linux users: [AUR package available](https://aur.archlinux.org/packages/push2talk-git)
+- Others: Use `cargo install push2talk`
 
 ## 🎤 Usage
 
-- To get the code name of the keys you want to use, or the source devices available, start in `trace` mode: `env RUST_LOG=trace push2talk`.
-- To set keybind compose of one or two keys, use env var, eg: `env PUSH2TALK_KEYBIND="Control_L,Space" push2talk` or `env PUSH2TALK_KEYBIND="Super_R" push2talk`.
-- To get more log: `RUST_LOG=debug push2talk`.
-- To specify an unique source to manage, use the env var, eg: `env PUSH2TALK_SOURCE="OpenComm by Shokz" push2talk`.
-- There is also a systemd unit provided. `systemctl --user start push2talk.service`.
+- Start `push2talk` binary.
+- Systemd unit provided: `systemctl --user start push2talk.service`.
 
-## 😅 Notes
+## 🎤 Advanced Configuration
 
-- Easy Effects sources are ignoring in order to not becoming a `push2listen`.
+- Trace mode for key and source device identification: `env RUST_LOG=trace push2talk`.
+- Custom keybinds via environment variables: `env PUSH2TALK_KEYBIND="Control_L,Space" push2talk`.
+- Debug logging: `RUST_LOG=debug push2talk`.
+- Specify a particular audio source: `env PUSH2TALK_SOURCE="OpenComm by Shokz" push2talk`.
 
-## 👥 Contributing
+## 😅 Additional Information
 
-We welcome contributions!
+- Excludes Easy Effects sources to prevent unintentional "push-to-listen" scenarios.
 
-## 💑 Thanks
+## 👥 How to Contribute
+
+Contributions are highly welcome.
+
+## 💑 Acknowledgments
 
 Made with love by @cyrinux and @maximbaz.
