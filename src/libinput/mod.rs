@@ -6,6 +6,7 @@ use libc::{O_RDWR, O_WRONLY};
 use log::{debug, info, trace};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
+use std::io;
 use std::os::unix::{
     fs::OpenOptionsExt,
     io::{AsRawFd, OwnedFd},
@@ -72,15 +73,14 @@ impl Controller {
         let mut is_running = true;
 
         loop {
-            unsafe {
-                if libc::poll(fds.as_mut_ptr(), 1, poll_timeout) < 0 {
-                    // on pause signal send, libc abort polling and
-                    // receive EINTR error
-                    if *libc::__errno_location() == libc::EINTR {
-                        continue;
-                    }
-                    return Err("Unable to poll libinput, aborting".into());
+            let poll_err = unsafe { libc::poll(fds.as_mut_ptr(), 1, poll_timeout) } < 0;
+            if poll_err {
+                // on pause signal send, libc abort polling and
+                // receive EINTR error
+                if io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+                    continue;
                 }
+                return Err("Unable to poll libinput, aborting".into());
             }
 
             libinput_context.dispatch()?;
