@@ -54,11 +54,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Init channel for set sources
     let (tx_libinput, rx_set_source) = mpsc::channel();
+    let tx_set_source = tx_libinput.clone();
 
     // Start set source thread
     thread::spawn(move || {
         pulseaudio_ctl
-            .run(rx_set_source)
+            .run(tx_set_source, rx_set_source)
             .expect("Error in pulseaudio thread");
     });
 
