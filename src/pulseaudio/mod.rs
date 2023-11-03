@@ -52,14 +52,20 @@ impl Controller {
 
         // Subscribe to card changes
         context.subscribe(InterestMaskSet::CARD, |_| {});
-        {}
-        // Set the subscribe callback
+
+        // Set the subscribe callback to mute devices on cards change
+        // or new/remove devices
         let tx = self.tx.clone();
         context.set_subscribe_callback(Some(Box::new(move |facility, operation, _index| {
             match (facility, operation) {
                 (Some(Facility::Card), Some(Operation::Changed))
                 | (Some(Facility::Card), Some(Operation::Removed))
-                | (Some(Facility::Card), Some(Operation::New)) => tx.send(true).unwrap(),
+                | (Some(Facility::Card), Some(Operation::New)) => {
+                    trace!("Card change, new or remove device, muting");
+                    if let Err(err) = tx.send(true) {
+                        error!("Can't mute devices, ignoring...: {err}");
+                    };
+                }
                 _ => (),
             }
         })));
