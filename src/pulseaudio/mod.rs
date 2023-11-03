@@ -61,7 +61,7 @@ impl Controller {
                 (Some(Facility::Card), Some(Operation::Changed))
                 | (Some(Facility::Card), Some(Operation::Removed))
                 | (Some(Facility::Card), Some(Operation::New)) => {
-                    trace!("Card change, new or remove device, muting");
+                    trace!("Card change, new or removed device, muting");
                     if let Err(err) = tx.send(true) {
                         error!("Can't mute devices, ignoring...: {err}");
                     };
