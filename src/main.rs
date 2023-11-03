@@ -7,7 +7,6 @@ use std::error::Error;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::mpsc::{self};
 use std::{
     sync::{atomic::AtomicBool, Arc},
     thread,
@@ -50,16 +49,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     setup_logging();
 
     let libinput_ctl = libinput::Controller::new()?;
-    // Init channel for set sources
-    let (tx_libinput, rx_set_source) = mpsc::channel();
-    let tx_set_source = tx_libinput.clone();
-    let pulseaudio_ctl = pulseaudio::Controller::new();
+    let (pulseaudio_ctl, tx_libinput) = pulseaudio::Controller::new();
 
     // Start set source thread
     thread::spawn(move || {
-        pulseaudio_ctl
-            .run(tx_set_source, rx_set_source)
-            .expect("Error in pulseaudio thread");
+        pulseaudio_ctl.run().expect("Error in pulseaudio thread");
     });
 
     // Register UNIX signals for pause
