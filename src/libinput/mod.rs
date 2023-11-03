@@ -49,7 +49,7 @@ impl Controller {
             first_key_pressed: Cell::new(false),
             second_key: keybind_parsed.get(1).cloned(),
             second_key_pressed: Cell::new(false),
-            last_mute: Cell::new(true),
+            last_mute: Cell::new(false),
             xkb_state: init_xkb_state()?,
         })
     }

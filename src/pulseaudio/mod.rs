@@ -1,9 +1,13 @@
 use libpulse_binding::callbacks::ListResult;
-use libpulse_binding::context::{Context, FlagSet};
+
+use libpulse_binding::context::{
+    subscribe::Facility, subscribe::InterestMaskSet, subscribe::Operation, Context, FlagSet,
+};
 use libpulse_binding::mainloop::threaded::Mainloop;
+
 use log::{error, trace};
 use std::error::Error;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 use std::{env, thread};
 
@@ -18,7 +22,7 @@ impl Controller {
         }
     }
 
-    pub fn run(&self, rx: Receiver<bool>) -> Result<(), Box<dyn Error>> {
+    pub fn run(&self, tx: Sender<bool>, rx: Receiver<bool>) -> Result<(), Box<dyn Error>> {
         let mut mainloop = Mainloop::new().ok_or("Failed to create mainloop")?;
 
         let mut context =
@@ -36,6 +40,19 @@ impl Controller {
 
             error!("Waiting for pulseaudio to be ready...");
         }
+
+        // Subscribe to card changes
+        context.subscribe(InterestMaskSet::CARD, |_| {});
+        {}
+        // Set the subscribe callback
+        context.set_subscribe_callback(Some(Box::new(move |facility, operation, _index| {
+            match (facility, operation) {
+                (Some(Facility::Card), Some(Operation::Changed))
+                | (Some(Facility::Card), Some(Operation::Removed))
+                | (Some(Facility::Card), Some(Operation::New)) => tx.send(true).unwrap(),
+                _ => (),
+            }
+        })));
 
         loop {
             if let Ok(mute) = rx.recv() {
