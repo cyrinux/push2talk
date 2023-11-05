@@ -3,7 +3,7 @@ use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
-use log::{debug, info, trace};
+use log::{debug, error, trace};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -13,14 +13,8 @@ use std::os::unix::{
 };
 use std::path::Path;
 use std::sync::mpsc::Sender;
-use std::{
-    cell::Cell,
-    env,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::sync::Mutex;
+use std::{cell::Cell, env, sync::Arc};
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
 
@@ -49,12 +43,12 @@ impl Controller {
             first_key_pressed: Cell::new(false),
             second_key: keybind_parsed.get(1).cloned(),
             second_key_pressed: Cell::new(false),
-            last_mute: Cell::new(true),
+            last_mute: Cell::new(false),
             xkb_state: init_xkb_state()?,
         })
     }
 
-    pub fn run(&self, tx: Sender<bool>, sig_pause: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+    pub fn run(&self, tx: Sender<bool>, is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
         // Mute on init
         tx.send(true)?;
 
@@ -85,20 +79,20 @@ impl Controller {
 
             libinput_context.dispatch()?;
 
-            if sig_pause.swap(false, Ordering::Relaxed) {
-                is_running = !is_running;
-                info!(
-                    "Received SIGUSR1 signal, {}",
-                    if is_running { "resuming" } else { "pausing" }
-                );
+            match is_paused.lock() {
+                Ok(is_paused) if is_running == *is_paused => {
+                    is_running = !is_running;
 
-                // Toggle mute on pause/resume
-                tx.send(is_running)?;
+                    // Toggle mute on pause/resume
+                    tx.send(is_running)?;
 
-                // ignore final events that happened just before the resume signal
-                if is_running {
-                    libinput_context.by_ref().for_each(drop);
+                    // ignore final events that happened just before the resume signal
+                    if is_running {
+                        libinput_context.by_ref().for_each(drop);
+                    }
                 }
+                Err(err) => error!("Deadlock in libinput checking if we are paused: {err:?}"),
+                _ => (),
             }
 
             for event in libinput_context.by_ref() {

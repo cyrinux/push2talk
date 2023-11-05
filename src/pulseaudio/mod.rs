@@ -1,24 +1,38 @@
 use libpulse_binding::callbacks::ListResult;
-use libpulse_binding::context::{Context, FlagSet};
+
+use libpulse_binding::context::{
+    subscribe::Facility, subscribe::InterestMaskSet, subscribe::Operation, Context, FlagSet,
+};
 use libpulse_binding::mainloop::threaded::Mainloop;
+
 use log::{error, trace};
 use std::error::Error;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{env, thread};
 
 pub struct Controller {
     source: Option<String>,
+    tx: Sender<bool>,
+    rx: Receiver<bool>,
 }
 
 impl Controller {
-    pub fn new() -> Self {
-        Controller {
-            source: parse_source(),
-        }
+    pub fn new() -> (Self, Sender<bool>) {
+        let (tx, rx) = mpsc::channel();
+
+        (
+            Controller {
+                source: parse_source(),
+                tx: tx.clone(),
+                rx,
+            },
+            tx,
+        )
     }
 
-    pub fn run(&self, rx: Receiver<bool>) -> Result<(), Box<dyn Error>> {
+    pub fn run(&self, is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
         let mut mainloop = Mainloop::new().ok_or("Failed to create mainloop")?;
 
         let mut context =
@@ -37,8 +51,32 @@ impl Controller {
             error!("Waiting for pulseaudio to be ready...");
         }
 
+        // Subscribe to card changes
+        context.subscribe(InterestMaskSet::CARD, |_| {});
+
+        // Set the subscribe callback to mute devices on cards change
+        // or new/remove devices
+        let tx = self.tx.clone();
+        context.set_subscribe_callback(Some(Box::new(move |facility, operation, _index| {
+            match (is_paused.lock(), facility, operation) {
+                (Err(err), _, _) => {
+                    error!("Deadlock in pulseaudio checking if we are paused: {err:?}")
+                }
+                (Ok(is_paused), _, _) if *is_paused => (),
+                (_, Some(Facility::Card), Some(Operation::Changed))
+                | (_, Some(Facility::Card), Some(Operation::Removed))
+                | (_, Some(Facility::Card), Some(Operation::New)) => {
+                    trace!("Card change, new or removed device, muting");
+                    if let Err(err) = tx.send(true) {
+                        error!("Can't mute devices, ignoring...: {err}");
+                    };
+                }
+                _ => (),
+            }
+        })));
+
         loop {
-            if let Ok(mute) = rx.recv() {
+            if let Ok(mute) = self.rx.recv() {
                 let mut ctx_volume_controller = context.introspect();
                 let source = self.source.clone();
                 context
