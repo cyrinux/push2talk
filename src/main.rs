@@ -114,7 +114,7 @@ fn register_signal(is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
                 *lock = !*lock;
                 info!(
                     "Received SIGUSR1 signal, {}",
-                    if *lock { "resuming" } else { "pausing" }
+                    if *lock { "pausing" } else { "resuming" }
                 );
             }
             Err(err) => error!("Deadlock in handling UNIX signal: {err:?}"),
