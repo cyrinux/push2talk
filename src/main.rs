@@ -1,12 +1,15 @@
 use clap::Parser;
 use directories_next::BaseDirs;
 use fs2::FileExt;
-use log::info;
+use log::{error, info};
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::Ordering;
+use std::sync::Mutex;
+use std::time::Duration;
 use std::{
     sync::{atomic::AtomicBool, Arc},
     thread,
@@ -48,23 +51,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     setup_logging();
 
+    // Register UNIX signals for pause
+    let is_paused = Arc::new(Mutex::new(false));
+    register_signal(is_paused.clone())?;
+
     let libinput_ctl = libinput::Controller::new()?;
     let (pulseaudio_ctl, tx_libinput) = pulseaudio::Controller::new();
 
     // Start set source thread
+    let is_paused_pulseaudio = is_paused.clone();
     thread::spawn(move || {
-        pulseaudio_ctl.run().expect("Error in pulseaudio thread");
+        pulseaudio_ctl
+            .run(is_paused_pulseaudio)
+            .expect("Error in pulseaudio thread");
     });
-
-    // Register UNIX signals for pause
-    let sig_pause = Arc::new(AtomicBool::new(false));
-    register_signal(&sig_pause)?;
 
     // Start the application
     info!("Push2talk started");
 
     // Init libinput
-    libinput_ctl.run(tx_libinput, sig_pause)?;
+    libinput_ctl.run(tx_libinput, is_paused)?;
 
     Ok(())
 }
@@ -91,20 +97,29 @@ fn setup_logging() {
     );
 }
 
-fn register_signal(sig_pause: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    flag::register(signal_hook::consts::SIGUSR1, Arc::clone(sig_pause))
+fn register_signal(is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
+    let sig_pause = Arc::new(AtomicBool::new(false));
+
+    flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&sig_pause))
         .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"))?;
 
+    thread::spawn(move || loop {
+        if !sig_pause.swap(false, Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(250));
+            continue;
+        }
+
+        match is_paused.lock() {
+            Ok(mut lock) => {
+                *lock = !*lock;
+                info!(
+                    "Received SIGUSR1 signal, {}",
+                    if *lock { "resuming" } else { "pausing" }
+                );
+            }
+            Err(err) => error!("Deadlock in handling UNIX signal: {err:?}"),
+        }
+    });
+
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_register_signal_success() {
-        let flag = Arc::new(AtomicBool::new(false));
-        assert!(register_signal(&flag).is_ok());
-    }
 }

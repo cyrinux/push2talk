@@ -8,6 +8,7 @@ use libpulse_binding::mainloop::threaded::Mainloop;
 use log::{error, trace};
 use std::error::Error;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{env, thread};
 
@@ -31,7 +32,7 @@ impl Controller {
         )
     }
 
-    pub fn run(&self) -> Result<(), Box<dyn Error>> {
+    pub fn run(&self, is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
         let mut mainloop = Mainloop::new().ok_or("Failed to create mainloop")?;
 
         let mut context =
@@ -57,10 +58,14 @@ impl Controller {
         // or new/remove devices
         let tx = self.tx.clone();
         context.set_subscribe_callback(Some(Box::new(move |facility, operation, _index| {
-            match (facility, operation) {
-                (Some(Facility::Card), Some(Operation::Changed))
-                | (Some(Facility::Card), Some(Operation::Removed))
-                | (Some(Facility::Card), Some(Operation::New)) => {
+            match (is_paused.lock(), facility, operation) {
+                (Err(err), _, _) => {
+                    error!("Deadlock in pulseaudio checking if we are paused: {err:?}")
+                }
+                (Ok(is_paused), _, _) if *is_paused => (),
+                (_, Some(Facility::Card), Some(Operation::Changed))
+                | (_, Some(Facility::Card), Some(Operation::Removed))
+                | (_, Some(Facility::Card), Some(Operation::New)) => {
                     trace!("Card change, new or removed device, muting");
                     if let Err(err) = tx.send(true) {
                         error!("Can't mute devices, ignoring...: {err}");
