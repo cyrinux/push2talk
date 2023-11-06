@@ -63,14 +63,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Start set source thread
     let is_paused_pulseaudio = is_paused.clone();
     let tx_exit_pulseaudio = tx_exit.clone();
-    run_in_thread(tx_exit.clone(), move || {
+    run_in_thread(tx_exit.clone(), "pulseaudio", move || {
         pulseaudio_ctl.run(tx_exit_pulseaudio, is_paused_pulseaudio)
-    });
+    })?;
 
     // Init libinput
-    run_in_thread(tx_exit.clone(), move || {
+    run_in_thread(tx_exit.clone(), "libinput", move || {
         libinput::Controller::new()?.run(tx_libinput, is_paused)
-    });
+    })?;
 
     // Start the application
     info!("Push2talk started");
@@ -101,18 +101,22 @@ fn setup_logging() {
     );
 }
 
-fn run_in_thread<F>(tx_exit: Sender<bool>, f: F)
+fn run_in_thread<F>(tx_exit: Sender<bool>, name: &str, f: F) -> Result<(), Box<dyn Error>>
 where
     F: FnOnce() -> Result<(), Box<dyn Error>> + Send + 'static,
 {
-    thread::spawn(move || {
-        if let Err(err) = f() {
-            error!("Error in thread: {err:?}");
-            if let Err(err) = tx_exit.send(true) {
-                error!("Unable to send exit signal from thread: {err:?}");
+    thread::Builder::new()
+        .name(name.to_string())
+        .spawn(move || {
+            if let Err(err) = f() {
+                error!("Error in thread: {err:?}");
+                if let Err(err) = tx_exit.send(true) {
+                    error!("Unable to send exit signal from thread: {err:?}");
+                }
             }
-        }
-    });
+        })?;
+
+    Ok(())
 }
 
 fn register_signal(
@@ -124,7 +128,7 @@ fn register_signal(
     flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&sig_pause))
         .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"))?;
 
-    run_in_thread(tx_exit, move || loop {
+    run_in_thread(tx_exit, "signal_catcher", move || loop {
         if !sig_pause.swap(false, Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(250));
             continue;
@@ -139,7 +143,7 @@ fn register_signal(
             "Received SIGUSR1 signal, {}",
             if *lock { "pausing" } else { "resuming" }
         );
-    });
+    })?;
 
     Ok(())
 }
