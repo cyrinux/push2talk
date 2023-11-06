@@ -32,7 +32,11 @@ impl Controller {
         )
     }
 
-    pub fn run(&self, is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
+    pub fn run(
+        &self,
+        tx_exit: Sender<bool>,
+        is_paused: Arc<Mutex<bool>>,
+    ) -> Result<(), Box<dyn Error>> {
         let mut mainloop = Mainloop::new().ok_or("Failed to create mainloop")?;
 
         let mut context =
@@ -60,13 +64,16 @@ impl Controller {
         context.set_subscribe_callback(Some(Box::new(move |facility, operation, _index| {
             match (is_paused.lock(), facility, operation) {
                 (Err(err), _, _) => {
-                    error!("Deadlock in pulseaudio checking if we are paused: {err:?}")
+                    error!("Deadlock in pulseaudio checking if we are paused: {err:?}");
+                    if let Err(err) = tx_exit.send(true) {
+                        error!("Unable to send exit signal from pulseaudio callback: {err:?}");
+                    }
                 }
                 (Ok(is_paused), _, _) if *is_paused => (),
                 (_, Some(Facility::Card), Some(Operation::Changed))
                 | (_, Some(Facility::Card), Some(Operation::Removed))
                 | (_, Some(Facility::Card), Some(Operation::New)) => {
-                    trace!("Card change, new or removed device, muting");
+                    trace!("Card changed, added or removed device => muting");
                     if let Err(err) = tx.send(true) {
                         error!("Can't mute devices, ignoring...: {err}");
                     };

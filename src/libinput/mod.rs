@@ -3,7 +3,7 @@ use input::event::keyboard::KeyboardEventTrait;
 use input::{Libinput, LibinputInterface};
 use itertools::Itertools;
 use libc::{O_RDWR, O_WRONLY};
-use log::{debug, error, trace};
+use log::{debug, trace};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -79,20 +79,20 @@ impl Controller {
 
             libinput_context.dispatch()?;
 
-            match is_paused.lock() {
-                Ok(is_paused) if is_running == *is_paused => {
-                    is_running = !is_running;
+            let is_paused_now = is_paused.lock().map_err(|err| {
+                format!("Deadlock in libinput checking if we are paused: {err:?}")
+            })?;
 
-                    // Toggle mute on pause/resume
-                    tx.send(is_running)?;
+            if is_running == *is_paused_now {
+                is_running = !is_running;
 
-                    // ignore final events that happened just before the resume signal
-                    if is_running {
-                        libinput_context.by_ref().for_each(drop);
-                    }
+                // Toggle mute on pause/resume
+                tx.send(is_running)?;
+
+                // ignore final events that happened just before the resume signal
+                if is_running {
+                    libinput_context.by_ref().for_each(drop);
                 }
-                Err(err) => error!("Deadlock in libinput checking if we are paused: {err:?}"),
-                _ => (),
             }
 
             for event in libinput_context.by_ref() {
