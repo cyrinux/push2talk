@@ -55,7 +55,7 @@ impl Controller {
         let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
         libinput_context
             .udev_assign_seat("seat0")
-            .map_err(|e| format!("Can't connect to libinput on seat0: {e:?}"))?;
+            .map_err(|err| format!("Can't connect to libinput on seat0: {err:?}"))?;
 
         let mut fds = [libc::pollfd {
             fd: libinput_context.as_raw_fd(),
@@ -79,9 +79,9 @@ impl Controller {
 
             libinput_context.dispatch()?;
 
-            let is_paused_now = is_paused.lock().map_err(|err| {
-                format!("Deadlock in libinput checking if we are paused: {err:?}")
-            })?;
+            let is_paused_now = is_paused
+                .lock()
+                .map_err(|err| format!("Deadlock in libinput checking if we are paused: {err}"))?;
 
             if is_running == *is_paused_now {
                 is_running = !is_running;
