@@ -8,7 +8,8 @@ use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::Ordering;
-use std::sync::Mutex;
+use std::sync::mpsc::Sender;
+use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 use std::{
     sync::{atomic::AtomicBool, Arc},
@@ -51,27 +52,30 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     setup_logging();
 
+    let (tx_exit, rx_exit) = mpsc::channel();
+
     // Register UNIX signals for pause
     let is_paused = Arc::new(Mutex::new(false));
-    register_signal(is_paused.clone())?;
+    register_signal(tx_exit.clone(), is_paused.clone())?;
 
-    let libinput_ctl = libinput::Controller::new()?;
     let (pulseaudio_ctl, tx_libinput) = pulseaudio::Controller::new();
 
     // Start set source thread
     let is_paused_pulseaudio = is_paused.clone();
-    thread::spawn(move || {
-        pulseaudio_ctl
-            .run(is_paused_pulseaudio)
-            .expect("Error in pulseaudio thread");
+    let tx_exit_pulseaudio = tx_exit.clone();
+    run_in_thread(tx_exit.clone(), move || {
+        pulseaudio_ctl.run(tx_exit_pulseaudio, is_paused_pulseaudio)
+    });
+
+    // Init libinput
+    run_in_thread(tx_exit.clone(), move || {
+        libinput::Controller::new()?.run(tx_libinput, is_paused)
     });
 
     // Start the application
     info!("Push2talk started");
 
-    // Init libinput
-    libinput_ctl.run(tx_libinput, is_paused)?;
-
+    rx_exit.recv()?;
     Ok(())
 }
 
@@ -97,28 +101,44 @@ fn setup_logging() {
     );
 }
 
-fn register_signal(is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
+fn run_in_thread<F>(tx_exit: Sender<bool>, f: F)
+where
+    F: FnOnce() -> Result<(), Box<dyn Error>> + Send + 'static,
+{
+    thread::spawn(move || {
+        if let Err(err) = f() {
+            error!("Error in thread: {err:?}");
+            if let Err(err) = tx_exit.send(true) {
+                error!("Unable to send exit signal from thread: {err:?}");
+            }
+        }
+    });
+}
+
+fn register_signal(
+    tx_exit: Sender<bool>,
+    is_paused: Arc<Mutex<bool>>,
+) -> Result<(), Box<dyn Error>> {
     let sig_pause = Arc::new(AtomicBool::new(false));
 
     flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&sig_pause))
         .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"))?;
 
-    thread::spawn(move || loop {
+    run_in_thread(tx_exit, move || loop {
         if !sig_pause.swap(false, Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(250));
             continue;
         }
 
-        match is_paused.lock() {
-            Ok(mut lock) => {
-                *lock = !*lock;
-                info!(
-                    "Received SIGUSR1 signal, {}",
-                    if *lock { "pausing" } else { "resuming" }
-                );
-            }
-            Err(err) => error!("Deadlock in handling UNIX signal: {err:?}"),
-        }
+        let mut lock = is_paused
+            .lock()
+            .map_err(|err| format!("Deadlock in handling UNIX signal: {err:?}"))?;
+
+        *lock = !*lock;
+        info!(
+            "Received SIGUSR1 signal, {}",
+            if *lock { "pausing" } else { "resuming" }
+        );
     });
 
     Ok(())
