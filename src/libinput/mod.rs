@@ -50,7 +50,9 @@ impl Controller {
 
     pub fn run(&self, tx: Sender<bool>, is_paused: Arc<Mutex<bool>>) -> Result<(), Box<dyn Error>> {
         // Mute on init
+        tx.send(false)?; // this is needed to 'bootstrap' pulseaudio's subscribe callback, otherwise the very first unmute won't work
         tx.send(true)?;
+        self.last_mute.set(true);
 
         let mut libinput_context = Libinput::new_with_udev(Push2TalkLibinput);
         libinput_context
