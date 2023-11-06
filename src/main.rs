@@ -105,16 +105,15 @@ fn run_in_thread<F>(tx_exit: Sender<bool>, name: &str, f: F) -> Result<(), Box<d
 where
     F: FnOnce() -> Result<(), Box<dyn Error>> + Send + 'static,
 {
-    thread::Builder::new()
-        .name(name.to_string())
-        .spawn(move || {
-            if let Err(err) = f() {
-                error!("Error in thread: {err:?}");
-                if let Err(err) = tx_exit.send(true) {
-                    error!("Unable to send exit signal from thread: {err:?}");
-                }
+    let name = name.to_string();
+    thread::Builder::new().name(name.clone()).spawn(move || {
+        if let Err(err) = f() {
+            error!("Error in thread '{name}': {err:?}");
+            if let Err(err) = tx_exit.send(true) {
+                error!("Unable to send exit signal from thread '{name}': {err:?}");
             }
-        })?;
+        }
+    })?;
 
     Ok(())
 }
