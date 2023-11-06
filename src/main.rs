@@ -110,7 +110,7 @@ where
         if let Err(err) = f() {
             error!("Error in thread '{name}': {err:?}");
             if let Err(err) = tx_exit.send(true) {
-                error!("Unable to send exit signal from thread '{name}': {err:?}");
+                error!("Unable to send exit signal from thread '{name}': {err}");
             }
         }
     })?;
@@ -125,7 +125,7 @@ fn register_signal(
     let sig_pause = Arc::new(AtomicBool::new(false));
 
     flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&sig_pause))
-        .map_err(|e| format!("Unable to register SIGUSR1 signal: {e}"))?;
+        .map_err(|err| format!("Unable to register SIGUSR1 signal: {err}"))?;
 
     run_in_thread(tx_exit, "signal_catcher", move || loop {
         if !sig_pause.swap(false, Ordering::Relaxed) {
@@ -135,7 +135,7 @@ fn register_signal(
 
         let mut lock = is_paused
             .lock()
-            .map_err(|err| format!("Deadlock in handling UNIX signal: {err:?}"))?;
+            .map_err(|err| format!("Deadlock in handling UNIX signal: {err}"))?;
 
         *lock = !*lock;
         info!(
