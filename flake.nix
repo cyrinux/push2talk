@@ -15,6 +15,7 @@
       {
         defaultPackage = naersk-lib.buildPackage {
           src = ./.;
+          meta.mainProgram = "push2talk";
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ libxkbcommon libinput libpulseaudio systemd ];
         };
