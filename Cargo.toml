@@ -1,6 +1,6 @@
 [package]
 name = "push2talk"
-version = "1.2.5"
+version = "1.2.6"
 edition = "2021"
 authors = ["Cyril Levis", "Maxim Baz"]
 categories = ["gui", "multimedia::audio"]
@@ -25,3 +25,5 @@ strum = "0.25.0"
 strum_macros = "0.25.3"
 xkbcommon = "0.7.0"
 libpulse-binding = "2.0"
+nix = { version = "0.29", features = ["signal", "process"] }
+procfs = "0.16.0"

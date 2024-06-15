@@ -2,11 +2,13 @@ use clap::Parser;
 use directories_next::BaseDirs;
 use fs2::FileExt;
 use log::{error, info};
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
+use procfs::process::all_processes;
 use signal_hook::flag;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Mutex};
@@ -33,10 +35,30 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Send pause signal
     if cli.toggle_pause {
-        Command::new("pkill")
-            .args(["-SIGUSR1", "-f", "push2talk"])
-            .spawn()
-            .expect("Can't pause push2talk");
+        let processes = all_processes().expect("Failed to read processes");
+        let mut target_pid = None;
+        for process in processes {
+            match process {
+                Ok(proc) => {
+                    if let Ok(stat) = proc.stat() {
+                        if stat.comm == "push2talk" {
+                            target_pid = Some(stat.pid);
+                            break;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Error reading process: {}", e);
+                }
+            }
+        }
+
+        if let Some(pid) = target_pid {
+            let pid = Pid::from_raw(pid);
+            signal::kill(pid, Signal::SIGUSR1).expect("Failed to send SIGUSR1");
+        } else {
+            panic!("Process 'bla' not found");
+        }
 
         println!("Toggle pause.");
 
