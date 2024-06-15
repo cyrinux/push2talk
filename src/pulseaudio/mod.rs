@@ -99,8 +99,11 @@ impl Controller {
                             };
                             trace!("device source: {:?}", src.description);
                             if toggle {
-                                ctx_volume_controller
-                                    .set_source_mute_by_index(src.index, mute, None);
+                                ctx_volume_controller.set_source_mute_by_index(
+                                    src.index,
+                                    src.active_port.is_some() && mute,
+                                    None,
+                                );
                             }
                         }
                     });
