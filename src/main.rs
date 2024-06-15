@@ -33,8 +33,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Send pause signal
     if cli.toggle_pause {
-        Command::new("killall")
-            .args(["-SIGUSR1", "push2talk"])
+        Command::new("pkill")
+            .args(["-SIGUSR1", "-f", "push2talk"])
             .spawn()
             .expect("Can't pause push2talk");
 
