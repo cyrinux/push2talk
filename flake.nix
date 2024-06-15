@@ -11,16 +11,17 @@
       let
         pkgs = import nixpkgs { inherit system; };
         naersk-lib = pkgs.callPackage naersk { };
+        libs = with pkgs; [ libxkbcommon libinput libpulseaudio systemd ];
       in
       {
         defaultPackage = naersk-lib.buildPackage {
           src = ./.;
           meta.mainProgram = "push2talk";
-          nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ libxkbcommon libinput libpulseaudio systemd ];
+          nativeBuildInputs = [ pkgs.pkg-config ];
+          buildInputs = libs;
         };
         devShell = with pkgs; mkShell {
-          buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy ];
+          buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy pkg-config ] ++ libs;
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
       }
