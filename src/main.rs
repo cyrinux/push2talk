@@ -115,7 +115,7 @@ fn take_lock() -> Result<std::fs::File, Box<dyn Error>> {
     let lock_file = OpenOptions::new()
         .read(true)
         .write(true)
-        .create(true)
+        .truncate(false)
         .open(lock_path)?;
     Ok(lock_file)
 }
@@ -171,4 +171,3 @@ fn register_signal(
 
     Ok(())
 }
-
