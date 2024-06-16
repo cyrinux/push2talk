@@ -35,31 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Send pause signal
     if cli.toggle_pause {
-        let processes = all_processes().expect("Failed to read processes");
-        let mut target_pid = None;
-        for process in processes {
-            match process {
-                Ok(proc) => {
-                    if let Ok(stat) = proc.stat() {
-                        if stat.comm == "push2talk" {
-                            target_pid = Some(stat.pid);
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Error reading process: {}", e);
-                }
-            }
-        }
-
-        if let Some(pid) = target_pid {
-            let pid = Pid::from_raw(pid);
-            signal::kill(pid, Signal::SIGUSR1).expect("Failed to send SIGUSR1");
-        } else {
-            panic!("Process 'bla' not found");
-        }
-
+        send_pause_signal()?;
         println!("Toggle pause.");
 
         return Ok(());
@@ -98,6 +74,33 @@ fn main() -> Result<(), Box<dyn Error>> {
     info!("Push2talk started");
 
     rx_exit.recv()?;
+    Ok(())
+}
+
+fn send_pause_signal() -> Result<(), Box<dyn Error>> {
+    let processes = all_processes().expect("Failed to read processes");
+    let mut target_pid = None;
+
+    for process in processes {
+        if let Ok(proc) = process {
+            if let Ok(stat) = proc.stat() {
+                if stat.comm == "push2talk" {
+                    target_pid = Some(stat.pid);
+                    break;
+                }
+            }
+        } else {
+            error!("Error reading process");
+        }
+    }
+
+    if let Some(pid) = target_pid {
+        let pid = Pid::from_raw(pid);
+        signal::kill(pid, Signal::SIGUSR1).expect("Failed to send SIGUSR1");
+    } else {
+        panic!("Process 'push2talk' not found");
+    }
+
     Ok(())
 }
 
@@ -168,3 +171,4 @@ fn register_signal(
 
     Ok(())
 }
+
