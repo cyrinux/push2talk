@@ -113,6 +113,7 @@ fn take_lock() -> Result<std::fs::File, Box<dyn Error>> {
     );
     lock_path.push("push2talk.lock");
     let lock_file = OpenOptions::new()
+        .create(true)
         .read(true)
         .write(true)
         .truncate(false)
