@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: ${{ github.event.repository.name }}
+
+jobs:
+  build:
+    name: Build - ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: x86_64-linux
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            suffix: aarch64-linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build with cross
+        run: |
+          cross build --release --target ${{ matrix.target }}
+          strip target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} || true
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} dist/${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+          path: dist/${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
