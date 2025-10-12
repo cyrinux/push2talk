@@ -66,13 +66,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: artifacts/**/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+        run: |
+          gh release create ${{ github.ref_name }} \
+            -t "${{ github.ref_name }}" \
+            --generate-notes \
+            --latest \
+            artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
